@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Keel</title>
+
+  <!-- Fuer iPhone optimiert: keine Zoom-Spruenge, Rand bis in die Ecken -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
+  <!-- Damit die App vom Home-Bildschirm ohne Safari-Leisten startet -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Keel">
+  <meta name="theme-color" content="#0B0F14">
+  <meta name="color-scheme" content="dark">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="description" content="Privates Haushaltsbuch. Alle Daten bleiben auf dem Gerät.">
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div id="app">
+    <div id="schirm"><!-- wird von app.js gefuellt --></div>
+  </div>
+
+  <nav class="nav">
+    <button data-schirm="uebersicht" class="an">
+      <svg viewBox="0 0 24 24"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      Übersicht
+    </button>
+
+    <button data-schirm="ausgaben">
+      <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+      Ausgaben
+    </button>
+
+    <div class="fab-halter">
+      <button class="fab" aria-label="Neue Buchung">+</button>
+    </div>
+
+    <button data-schirm="einnahmen">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M18 13l-6 6-6-6"/></svg>
+      Einnahmen
+    </button>
+
+    <button data-schirm="mehr">
+      <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>
+      Mehr
+    </button>
+  </nav>
+
+  <script src="csv.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

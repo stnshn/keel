@@ -1,0 +1,581 @@
+/* ============================================================
+   Keel - Styles
+   Nur fuer das iPhone gebaut. Dark Mode ist fest eingestellt.
+   ============================================================ */
+
+:root {
+  --bg:            #0B0F14;
+  --bg-erhoben:    #131A22;
+  --karte:         #171F29;
+  --karte-hell:    #1E2833;
+  --linie:         #263241;
+  --text:          #E9EEF4;
+  --text-leise:    #8C9AAB;
+  --text-sehrleise:#5E6C7C;
+
+  --akzent:        #2DD4BF;
+  --akzent-dunkel: #0F766E;
+  --plus:          #34D399;
+  --minus:         #F87171;
+  --warn:          #FBBF24;
+
+  --r-s: 10px;
+  --r-m: 16px;
+  --r-l: 22px;
+
+  --nav-hoehe: 62px;
+
+  --sicher-oben:  env(safe-area-inset-top, 0px);
+  --sicher-unten: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Textauswahl nur dort, wo sie Sinn ergibt (verhindert Wackeln beim Tippen) */
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, .waehlbar { -webkit-user-select: text; user-select: text; }
+
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+input, select, textarea {
+  font: inherit;
+  font-size: 16px; /* verhindert Auto-Zoom in Safari */
+  color: var(--text);
+  background: var(--karte-hell);
+  border: 1px solid var(--linie);
+  border-radius: var(--r-s);
+  padding: 12px 14px;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--akzent);
+}
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%238C9AAB' stroke-width='2' fill='none' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 38px;
+}
+
+/* ---------- Grundgeruest ---------- */
+
+#app {
+  min-height: 100%;
+  padding-top: var(--sicher-oben);
+  padding-bottom: calc(var(--nav-hoehe) + var(--sicher-unten) + 12px);
+}
+
+.kopf {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(11, 15, 20, 0.92);
+  backdrop-filter: saturate(160%) blur(14px);
+  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--linie);
+  padding: calc(var(--sicher-oben) + 10px) 16px 10px;
+  margin-top: calc(-1 * var(--sicher-oben));
+}
+.kopf h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+.kopf .unterzeile {
+  color: var(--text-leise);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.inhalt { padding: 16px; }
+
+/* ---------- Monatswaehler ---------- */
+
+.monatswahl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.monatswahl button.pfeil {
+  width: 40px; height: 40px;
+  flex: 0 0 40px;
+  border-radius: 12px;
+  background: var(--karte);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: var(--text-leise);
+}
+.monatswahl button.pfeil:active { background: var(--karte-hell); }
+.monatswahl .aktuell {
+  flex: 1;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 9px 0;
+  border-radius: 12px;
+  background: var(--karte);
+}
+.monatswahl .aktuell:active { background: var(--karte-hell); }
+
+/* ---------- Karten ---------- */
+
+.karte {
+  background: var(--karte);
+  border-radius: var(--r-m);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.karte-titel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: var(--text-sehrleise);
+  margin: 0 0 12px;
+}
+
+.saldo-karte { text-align: center; padding: 22px 16px 20px; }
+.saldo-wert {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -1.4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.saldo-label { color: var(--text-leise); font-size: 13px; margin-top: 6px; }
+
+.zwei-spalten { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mini-karte {
+  background: var(--karte);
+  border-radius: var(--r-m);
+  padding: 14px;
+}
+.mini-karte .label {
+  font-size: 12px; color: var(--text-leise);
+  display: flex; align-items: center; gap: 5px;
+}
+.mini-karte .wert {
+  font-size: 21px; font-weight: 700; margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+.plus  { color: var(--plus); }
+.minus { color: var(--minus); }
+.leise { color: var(--text-leise); }
+
+/* ---------- Kategorie-Auswertung ---------- */
+
+.kat-zeile { margin-bottom: 15px; }
+.kat-zeile:last-child { margin-bottom: 0; }
+.kat-kopf {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 15px; margin-bottom: 7px;
+}
+.kat-kopf .emoji { font-size: 17px; }
+.kat-kopf .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kat-kopf .betrag { font-weight: 600; font-variant-numeric: tabular-nums; }
+.kat-kopf .anteil { color: var(--text-sehrleise); font-size: 12px; min-width: 38px; text-align: right; }
+.balken { height: 7px; background: var(--karte-hell); border-radius: 4px; overflow: hidden; }
+.balken > i { display: block; height: 100%; border-radius: 4px; background: var(--akzent); }
+
+/* ---------- Buchungsliste ---------- */
+
+.tag-kopf {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 16px 4px 7px;
+  font-size: 13px;
+  color: var(--text-leise);
+  font-weight: 600;
+}
+.tag-kopf .summe { font-variant-numeric: tabular-nums; font-weight: 500; color: var(--text-sehrleise); }
+
+.buchung {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--karte);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 7px;
+  width: 100%;
+  text-align: left;
+}
+.buchung:active { background: var(--karte-hell); }
+.buchung .icon {
+  width: 40px; height: 40px; flex: 0 0 40px;
+  border-radius: 12px;
+  background: var(--karte-hell);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px;
+}
+.buchung .mitte { flex: 1; min-width: 0; }
+.buchung .titel {
+  font-size: 15.5px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.buchung .sub {
+  font-size: 12.5px; color: var(--text-sehrleise); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.buchung .wert {
+  font-size: 16px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.leer-hinweis {
+  text-align: center;
+  color: var(--text-sehrleise);
+  padding: 46px 24px;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.leer-hinweis .gross { font-size: 40px; display: block; margin-bottom: 10px; opacity: 0.5; }
+
+/* ---------- Untere Navigation ---------- */
+
+.nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 40;
+  height: calc(var(--nav-hoehe) + var(--sicher-unten));
+  padding-bottom: var(--sicher-unten);
+  background: rgba(15, 21, 28, 0.94);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-top: 1px solid var(--linie);
+  display: grid;
+  grid-template-columns: 1fr 1fr 78px 1fr 1fr;
+  align-items: stretch;
+}
+.nav button {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 3px;
+  color: var(--text-sehrleise);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding-top: 6px;
+}
+.nav button svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.nav button.an { color: var(--akzent); }
+
+.fab-halter { position: relative; }
+.fab {
+  position: absolute;
+  left: 50%; top: -20px;
+  transform: translateX(-50%);
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: var(--akzent);
+  color: #04231F;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 33px; font-weight: 300;
+  box-shadow: 0 6px 20px rgba(45, 212, 191, 0.34);
+}
+.fab:active { transform: translateX(-50%) scale(0.93); }
+
+/* ---------- Blatt / Modal ---------- */
+
+.blatt-hinter {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  opacity: 0;
+  animation: einblenden 0.18s ease forwards;
+}
+@keyframes einblenden { to { opacity: 1; } }
+
+.blatt {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 51;
+  max-height: 93vh;
+  display: flex; flex-direction: column;
+  background: var(--bg-erhoben);
+  border-radius: var(--r-l) var(--r-l) 0 0;
+  padding-bottom: var(--sicher-unten);
+  transform: translateY(100%);
+  animation: hochfahren 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+@keyframes hochfahren { to { transform: translateY(0); } }
+
+.blatt-kopf {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--linie);
+  flex: 0 0 auto;
+}
+.blatt-kopf h2 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; text-align: center; }
+.blatt-kopf button { font-size: 15px; color: var(--akzent); min-width: 62px; padding: 4px 0; }
+.blatt-kopf button.links { text-align: left; }
+.blatt-kopf button.rechts { text-align: right; font-weight: 600; }
+.blatt-kopf button:disabled { color: var(--text-sehrleise); }
+
+.blatt-koerper { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px; flex: 1 1 auto; }
+
+/* ---------- Schnellerfassung ---------- */
+
+.typ-schalter {
+  display: grid; grid-template-columns: 1fr 1fr;
+  background: var(--karte);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.typ-schalter button {
+  padding: 10px; border-radius: 9px;
+  font-size: 15px; font-weight: 600;
+  color: var(--text-leise);
+}
+.typ-schalter button.an { background: var(--karte-hell); color: var(--text); }
+.typ-schalter button.an[data-typ="ausgabe"]  { color: var(--minus); }
+.typ-schalter button.an[data-typ="einnahme"] { color: var(--plus); }
+
+.betrag-anzeige {
+  text-align: center;
+  font-size: 52px;
+  font-weight: 700;
+  letter-spacing: -2px;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 0 4px;
+  min-height: 66px;
+}
+.betrag-anzeige.aus { color: var(--minus); }
+.betrag-anzeige.ein { color: var(--plus); }
+.betrag-anzeige .grau { color: var(--text-sehrleise); }
+
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin: 14px 0 18px;
+}
+.numpad button {
+  height: 56px;
+  border-radius: 14px;
+  background: var(--karte);
+  font-size: 25px;
+  font-weight: 500;
+  display: flex; align-items: center; justify-content: center;
+}
+.numpad button:active { background: var(--akzent-dunkel); }
+.numpad button.klein { font-size: 20px; color: var(--text-leise); }
+
+.kat-gitter {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.kat-kachel {
+  background: var(--karte);
+  border-radius: 13px;
+  padding: 11px 4px 9px;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  border: 1.5px solid transparent;
+  min-height: 72px;
+  justify-content: center;
+}
+.kat-kachel .emoji { font-size: 21px; line-height: 1; }
+.kat-kachel .name {
+  font-size: 10.5px; text-align: center; line-height: 1.2;
+  color: var(--text-leise);
+  overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.kat-kachel.an { border-color: var(--akzent); background: var(--karte-hell); }
+.kat-kachel.an .name { color: var(--text); }
+
+/* ---------- Formular ---------- */
+
+.feld { margin-bottom: 15px; }
+.feld > label {
+  display: block;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-sehrleise);
+  margin-bottom: 7px;
+}
+.feld-reihe { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.knopf {
+  display: block; width: 100%;
+  padding: 15px;
+  border-radius: 14px;
+  font-size: 16.5px; font-weight: 600;
+  text-align: center;
+  background: var(--akzent);
+  color: #04231F;
+}
+.knopf:active { opacity: 0.82; }
+.knopf:disabled { background: var(--karte-hell); color: var(--text-sehrleise); }
+.knopf.zweit { background: var(--karte); color: var(--text); }
+.knopf.gefahr { background: rgba(248, 113, 113, 0.13); color: var(--minus); }
+.knopf.rand   { background: transparent; border: 1px solid var(--linie); color: var(--text); }
+.knopf + .knopf { margin-top: 10px; }
+
+.schalter-zeile {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--karte);
+  border-radius: 12px;
+  padding: 13px 14px;
+}
+.schalter-zeile .txt { flex: 1; }
+.schalter-zeile .txt small { display: block; color: var(--text-sehrleise); font-size: 12px; margin-top: 2px; }
+
+.schalter {
+  position: relative; flex: 0 0 50px;
+  width: 50px; height: 30px;
+  border-radius: 15px;
+  background: var(--linie);
+  transition: background 0.16s;
+}
+.schalter::after {
+  content: ''; position: absolute;
+  top: 3px; left: 3px;
+  width: 24px; height: 24px;
+  border-radius: 50%; background: #fff;
+  transition: transform 0.16s;
+}
+.schalter.an { background: var(--akzent); }
+.schalter.an::after { transform: translateX(20px); }
+
+/* ---------- Listenzeilen (Mehr / Kategorien / Regeln) ---------- */
+
+.liste { background: var(--karte); border-radius: var(--r-m); overflow: hidden; margin-bottom: 14px; }
+.listenzeile {
+  display: flex; align-items: center; gap: 13px;
+  padding: 14px 16px;
+  width: 100%; text-align: left;
+  border-bottom: 1px solid var(--linie);
+}
+.liste .listenzeile:last-child { border-bottom: 0; }
+.listenzeile:active { background: var(--karte-hell); }
+.listenzeile .icon { font-size: 20px; width: 26px; text-align: center; flex: 0 0 26px; }
+.listenzeile .mitte { flex: 1; min-width: 0; }
+.listenzeile .mitte .haupt { font-size: 15.5px; }
+.listenzeile .mitte .neben { font-size: 12.5px; color: var(--text-sehrleise); margin-top: 1px; }
+.listenzeile .rechts { color: var(--text-sehrleise); font-size: 14px; font-variant-numeric: tabular-nums; }
+.listenzeile .chevron { color: var(--text-sehrleise); font-size: 19px; }
+
+.abschnitt-titel {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.9px; text-transform: uppercase;
+  color: var(--text-sehrleise);
+  margin: 22px 4px 9px;
+}
+.abschnitt-titel:first-child { margin-top: 4px; }
+
+.hinweis {
+  font-size: 12.5px; color: var(--text-sehrleise);
+  padding: 0 4px; margin: -6px 0 16px; line-height: 1.55;
+}
+
+/* ---------- Import ---------- */
+
+.import-statistik {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 9px; margin-bottom: 16px;
+}
+.import-statistik div {
+  background: var(--karte); border-radius: 13px;
+  padding: 13px 8px; text-align: center;
+}
+.import-statistik .zahl { font-size: 23px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.import-statistik .txt  { font-size: 10.5px; color: var(--text-sehrleise); margin-top: 3px; line-height: 1.3; }
+
+.import-zeile {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--karte);
+  border-radius: 13px;
+  padding: 11px 13px;
+  margin-bottom: 7px;
+}
+.import-zeile.ab { opacity: 0.4; }
+.haken {
+  width: 25px; height: 25px; flex: 0 0 25px;
+  border-radius: 8px;
+  border: 2px solid var(--linie);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; color: transparent;
+}
+.haken.an { background: var(--akzent); border-color: var(--akzent); color: #04231F; }
+.import-zeile .mitte { flex: 1; min-width: 0; }
+.import-zeile .titel { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.import-zeile .sub { font-size: 12px; color: var(--text-sehrleise); margin-top: 2px; }
+.import-zeile .katknopf {
+  font-size: 12px; padding: 5px 9px;
+  background: var(--karte-hell); border-radius: 8px;
+  color: var(--text-leise); white-space: nowrap;
+  max-width: 118px; overflow: hidden; text-overflow: ellipsis;
+}
+.import-zeile .katknopf.gelernt { color: var(--akzent); }
+.import-zeile .wert { font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.datei-knopf {
+  display: block; text-align: center;
+  border: 2px dashed var(--linie);
+  border-radius: var(--r-m);
+  padding: 30px 18px;
+  color: var(--text-leise);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.datei-knopf .gross { font-size: 32px; display: block; margin-bottom: 8px; }
+.datei-knopf:active { border-color: var(--akzent); }
+
+/* ---------- Meldung / Toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 16px; right: 16px;
+  bottom: calc(var(--nav-hoehe) + var(--sicher-unten) + 16px);
+  z-index: 90;
+  background: var(--karte-hell);
+  border: 1px solid var(--linie);
+  border-radius: 13px;
+  padding: 13px 16px;
+  font-size: 14.5px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: toast-rein 0.22s ease;
+}
+.toast.gut    { border-color: var(--plus);  color: var(--plus); }
+.toast.fehler { border-color: var(--minus); color: var(--minus); }
+@keyframes toast-rein { from { opacity: 0; transform: translateY(14px); } }
+
+/* ---------- Diverses ---------- */
+
+.trenner { height: 1px; background: var(--linie); margin: 18px 0; }
+.mono { font-variant-numeric: tabular-nums; }
+.versteckt { display: none !important; }
+.zentriert { text-align: center; }
+
+.marke {
+  text-align: center;
+  color: var(--text-sehrleise);
+  font-size: 11.5px;
+  padding: 26px 0 6px;
+  line-height: 1.7;
+}
