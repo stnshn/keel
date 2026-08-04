@@ -159,7 +159,6 @@ select {
   font-size: 42px;
   font-weight: 700;
   letter-spacing: -1.4px;
-  font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 .saldo-label { color: var(--text-leise); font-size: 13px; margin-top: 6px; }
@@ -625,4 +624,141 @@ select {
   font-size: 11.5px;
   padding: 26px 0 6px;
   line-height: 1.7;
+}
+
+/* ============================================================
+   Phase 2 — Fixkosten, Budgets, Vermögen, Kredit
+   ============================================================ */
+
+/* Große Kennzahlen benutzen die normalen Ziffernbreiten.
+   Tabellenziffern lassen eine "121" bei dieser Größe locker
+   auseinanderfallen — die gehören in Spalten, nicht in Schlagzahlen. */
+.hero-wert {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -1.2px;
+  line-height: 1.1;
+}
+
+/* Antippbare Karte */
+.karte-knopf {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.karte-knopf:active { background: var(--karte-hell); }
+.karte-titel { display: flex; align-items: center; }
+.karte-pfeil { margin-left: auto; font-size: 15px; color: var(--text-sehrleise); }
+
+.budget-kopf {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; font-size: 15px; margin-bottom: 12px;
+}
+.budget-kopf .leise { font-size: 12.5px; }
+
+.budget-marke { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.budget-symbol { font-weight: 700; }
+
+.budget-zeile {
+  background: var(--karte);
+  border-radius: var(--r-m);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.budget-zeile .balken { margin-bottom: 7px; }
+.budget-status { font-size: 12px; margin-bottom: 10px; font-weight: 600; }
+.budget-status .leise { font-weight: 400; }
+.budget-feld { font-size: 15px; padding: 10px 12px; }
+
+/* Auswahl in Zeilen (Rhythmus, Vermögensart) */
+.wahl-gitter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.wahl-gitter button {
+  padding: 12px 8px;
+  border-radius: 11px;
+  background: var(--karte);
+  font-size: 13.5px;
+  border: 1.5px solid transparent;
+  color: var(--text-leise);
+}
+.wahl-gitter button.an {
+  border-color: var(--akzent);
+  background: var(--karte-hell);
+  color: var(--text);
+}
+
+.listenzeile.aus { opacity: 0.5; }
+
+/* Zins/Tilgung-Aufteilung */
+.split-zeile {
+  display: flex; justify-content: space-between;
+  font-size: 14px; padding: 3px 0;
+}
+.split-balken {
+  height: 7px;
+  background: var(--karte-hell);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0 9px;
+}
+.split-balken > i { display: block; height: 100%; border-radius: 4px; }
+
+/* Tabellenansicht (Tilgungsplan) — jeder Wert lesbar, nicht nur im Diagramm */
+.tabelle {
+  background: var(--karte);
+  border-radius: var(--r-m);
+  overflow: hidden;
+  font-size: 13px;
+}
+.tabelle-kopf, .tabelle-zeile {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr 1.2fr;
+  gap: 6px;
+  padding: 10px 13px;
+  align-items: baseline;
+}
+.tabelle-kopf {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-sehrleise);
+  border-bottom: 1px solid var(--linie);
+}
+.tabelle-zeile { border-bottom: 1px solid var(--linie); }
+.tabelle-zeile:last-child { border-bottom: 0; }
+.tabelle-zeile span:first-child { color: var(--text-leise); }
+.tabelle-kopf span:not(:first-child),
+.tabelle-zeile span:not(:first-child) { text-align: right; }
+
+/* ---------- Verlaufsdiagramm ---------- */
+
+.dg-halter { margin-top: 2px; }
+.dg-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  touch-action: pan-y;   /* senkrecht scrollen bleibt möglich */
+}
+.dg-achse {
+  font-size: 10px;
+  fill: var(--text-sehrleise);
+  font-variant-numeric: tabular-nums;   /* Achsenwerte stehen in einer Spalte */
+  font-family: inherit;
+}
+.dg-endwert {
+  font-size: 11.5px;
+  font-weight: 600;
+  fill: var(--text);      /* Text trägt Textfarbe, nie die Datenfarbe */
+  font-family: inherit;
+}
+.dg-ablesung {
+  font-size: 12px;
+  color: var(--text-leise);
+  text-align: center;
+  min-height: 17px;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 2px;
 }

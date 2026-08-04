@@ -46,11 +46,6 @@ const STANDARD_KATEGORIEN = [
   { id: 'umbuchung', name: 'Umbuchung', emoji: '🔄', typ: 'neutral', ausBilanz: true, system: true }
 ];
 
-const BALKEN_FARBEN = [
-  '#2DD4BF', '#60A5FA', '#A78BFA', '#F472B6', '#FBBF24',
-  '#34D399', '#FB923C', '#22D3EE', '#C084FC', '#F87171'
-];
-
 const EMOJI_AUSWAHL = [
   '🛒','🍽️','☕','⛽','🚗','🚌','🏠','💡','💧','📶','📱','💻','📺','🎮',
   '🛡️','💊','🏥','🏋️','⚽','🛍️','👕','👟','✈️','🏖️','🎬','🎵','📚','🎓',
@@ -65,11 +60,15 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 1,
+      version: 2,
       erstellt: new Date().toISOString(),
       buchungen: [],
       kategorien: STANDARD_KATEGORIEN.map((k) => Object.assign({}, k)),
       regeln: { exakt: {}, stamm: {} },
+      fixkosten: [],
+      budgets: {},
+      vermoegen: [],
+      kredite: [],
       einstellungen: {}
     };
   },
@@ -102,6 +101,20 @@ const Speicher = {
     d.regeln.exakt = d.regeln.exakt && typeof d.regeln.exakt === 'object' ? d.regeln.exakt : {};
     d.regeln.stamm = d.regeln.stamm && typeof d.regeln.stamm === 'object' ? d.regeln.stamm : {};
     d.einstellungen = d.einstellungen || {};
+
+    // --- Erweiterung auf Version 2 (Phase 2) ---
+    // Alte Sicherungen aus Phase 1 kennen diese Felder nicht. Sie werden
+    // ergaenzt, ohne dass Buchungen oder gelernte Regeln verloren gehen.
+    d.fixkosten = Array.isArray(d.fixkosten) ? d.fixkosten : [];
+    d.budgets   = d.budgets && typeof d.budgets === 'object' && !Array.isArray(d.budgets) ? d.budgets : {};
+    d.vermoegen = Array.isArray(d.vermoegen) ? d.vermoegen : [];
+    d.kredite   = Array.isArray(d.kredite) ? d.kredite : [];
+
+    d.fixkosten.forEach((f) => { if (!Array.isArray(f.staende)) f.staende = f.staende || []; });
+    d.vermoegen.forEach((p) => { if (!Array.isArray(p.staende)) p.staende = []; });
+    d.kredite.forEach((k)   => { if (!Array.isArray(k.staende)) k.staende = []; });
+
+    d.version = 2;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
@@ -208,9 +221,12 @@ function kategorienNach(typ) {
   return Daten.kategorien.filter((k) => k.typ === typ);
 }
 
-function katFarbe(id) {
-  const i = Daten.kategorien.findIndex((k) => k.id === id);
-  return BALKEN_FARBEN[(i < 0 ? 0 : i) % BALKEN_FARBEN.length];
+// Die Kategorie-Balken zeigen EINE Groesse: Ausgaben. Also bekommen sie
+// auch eine einzige Farbe. Zehn verschiedene Farbtoene wuerden nur die
+// Balkenlaenge ein zweites Mal erzaehlen - jede Zeile ist ohnehin mit
+// Symbol, Name, Betrag und Prozentwert beschriftet.
+function katFarbe() {
+  return typeof DIAGRAMM !== 'undefined' ? DIAGRAMM.serie : '#00A997';
 }
 
 // Buchungen, die in Summen mitzaehlen (Umbuchungen fliegen raus).
@@ -491,7 +507,7 @@ const UI = {
               '<span class="betrag">' + geldE(e.cent) + '</span>' +
               '<span class="anteil">' + anteil + '%</span>' +
             '</div>' +
-            '<div class="balken"><i style="width:' + breite + '%;background:' + katFarbe(e.id) + '"></i></div>' +
+            '<div class="balken"><i style="width:' + breite + '%;background:' + katFarbe() + '"></i></div>' +
           '</div>';
         }).join('') +
       '</div>';
@@ -531,11 +547,102 @@ const UI = {
           '<div class="mini-karte"><div class="label">↑ Ausgaben</div>' +
             '<div class="wert minus">' + geldE(summeAus) + '</div></div>' +
         '</div>' +
+        this.budgetKarte(monat) +
         vergleich +
         katHtml +
+        this.fixkostenKarte(monat) +
+        this.vermoegenKarte() +
         letzteHtml +
         leer +
       '</div>';
+  },
+
+  /* ---------- Übersichtskarten aus Phase 2 ---------- */
+
+  // Budget-Status auf einen Blick. Farbe ist nie der einzige Kanal:
+  // Symbol, Wort und Zahlen sagen dasselbe.
+  budgetKarte: function (monat) {
+    if (typeof Budgets === 'undefined') return '';
+    const liste = Budgets.uebersicht(monat);
+    if (!liste.length) return '';
+
+    const kritisch = liste.filter((e) => e.anteil >= 0.8);
+    const zeigen = (kritisch.length ? kritisch : liste).slice(0, 4);
+    const gesamtGrenze = liste.reduce((s, e) => s + e.grenze, 0);
+    const gesamtIst = liste.reduce((s, e) => s + e.ist, 0);
+    const frei = gesamtGrenze - gesamtIst;
+
+    return '<button class="karte karte-knopf" data-tu="budgets">' +
+      '<p class="karte-titel">Budget ' + esc(monatText(monat)) +
+        '<span class="karte-pfeil">›</span></p>' +
+      '<div class="budget-kopf">' +
+        '<span class="' + (frei >= 0 ? '' : 'minus') + '">' +
+          (frei >= 0 ? geld(frei) + ' € frei' : geld(-frei) + ' € darüber') + '</span>' +
+        '<span class="leise mono">' + geld(gesamtIst) + ' / ' + geld(gesamtGrenze) + ' €</span>' +
+      '</div>' +
+      zeigen.map((e) => {
+        const k = kategorie(e.kategorieId) || { name: '?', emoji: '❓' };
+        const breite = Math.min(100, Math.round(e.anteil * 100));
+        return '<div class="kat-zeile">' +
+          '<div class="kat-kopf">' +
+            '<span class="emoji">' + esc(k.emoji) + '</span>' +
+            '<span class="name">' + esc(k.name) + '</span>' +
+            '<span class="budget-marke" style="color:' + e.status.farbe + '">' +
+              e.status.symbol + ' ' + esc(e.status.wort) + '</span>' +
+            '<span class="anteil">' + Math.round(e.anteil * 100) + '%</span>' +
+          '</div>' +
+          '<div class="balken"><i style="width:' + breite + '%;background:' + e.status.farbe + '"></i></div>' +
+        '</div>';
+      }).join('') +
+      (liste.length > zeigen.length
+        ? '<div class="leise" style="font-size:12px;margin-top:10px">und ' +
+          (liste.length - zeigen.length) + ' weitere im Rahmen</div>'
+        : '') +
+    '</button>';
+  },
+
+  fixkostenKarte: function (monat) {
+    if (typeof Fixkosten === 'undefined') return '';
+    const aktive = (Daten.fixkosten || []).filter((f) => f.aktiv !== false);
+    if (!aktive.length) return '';
+
+    const summeFix = Fixkosten.monatsSumme();
+    const faellig = aktive.filter((f) => Fixkosten.faelligImMonat(f, monat));
+    const erledigt = faellig.filter((f) => Fixkosten.schonAbgebucht(f, monat));
+
+    return '<button class="karte karte-knopf" data-tu="fixkosten">' +
+      '<p class="karte-titel">Fixkosten<span class="karte-pfeil">›</span></p>' +
+      '<div class="budget-kopf">' +
+        '<span>' + geld(summeFix) + ' € im Monat</span>' +
+        '<span class="leise">' + erledigt.length + ' von ' + faellig.length + ' abgebucht</span>' +
+      '</div>' +
+      '<div class="balken" style="margin-top:4px"><i style="width:' +
+        (faellig.length ? Math.round(erledigt.length / faellig.length * 100) : 0) +
+        '%;background:' + DIAGRAMM.serie + '"></i></div>' +
+    '</button>';
+  },
+
+  vermoegenKarte: function () {
+    if (typeof Vermoegen === 'undefined') return '';
+    if (!(Daten.vermoegen || []).length && !(Daten.kredite || []).length) return '';
+
+    const netto = Vermoegen.netto();
+    const verlauf = Vermoegen.verlauf(true);
+    let trend = '';
+    if (verlauf.length > 1) {
+      const diff = netto - verlauf[0].cent;
+      trend = '<span class="leise">' + (diff >= 0 ? '▲ ' : '▼ ') + geld(Math.abs(diff)) +
+              ' € seit ' + esc(datumText(verlauf[0].datum)) + '</span>';
+    }
+
+    return '<button class="karte karte-knopf" data-tu="vermoegen">' +
+      '<p class="karte-titel">Vermögen<span class="karte-pfeil">›</span></p>' +
+      '<div class="budget-kopf">' +
+        '<span class="' + (netto >= 0 ? 'plus' : 'minus') + '" style="font-size:20px;font-weight:700">' +
+          geld(netto) + ' €</span>' +
+        trend +
+      '</div>' +
+    '</button>';
   },
 
   /* ---------- Schirm: Ausgaben / Einnahmen ---------- */
@@ -633,6 +740,46 @@ const UI = {
             '<span class="neben">CSV-Kontoauszug einlesen</span></span>' +
             '<span class="chevron">›</span></button>' +
         '</div>' +
+
+        // Der Planen-Bereich stammt aus phase2.js. Fehlt die Datei,
+        // laeuft die App ohne diesen Abschnitt einfach weiter.
+        (typeof Fixkosten === 'undefined' ? '' :
+        '<p class="abschnitt-titel">Planen</p>' +
+        '<div class="liste">' +
+          '<button class="listenzeile" data-tu="fixkosten">' +
+            '<span class="icon">📌</span>' +
+            '<span class="mitte"><span class="haupt">Fixkosten</span>' +
+            '<span class="neben">' +
+              ((Daten.fixkosten || []).length
+                ? (Daten.fixkosten || []).length + ' Posten · ' + geld(Fixkosten.monatsSumme()) + ' € im Monat'
+                : 'Miete, Strom, Abos, Versicherungen') + '</span></span>' +
+            '<span class="chevron">›</span></button>' +
+          '<button class="listenzeile" data-tu="budgets">' +
+            '<span class="icon">🎯</span>' +
+            '<span class="mitte"><span class="haupt">Budgets</span>' +
+            '<span class="neben">' +
+              (Object.keys(Daten.budgets || {}).length
+                ? Object.keys(Daten.budgets).length + ' Kategorien begrenzt · ' +
+                  geld(Budgets.gesamt()) + ' € gesamt'
+                : 'Monatsgrenze pro Kategorie') + '</span></span>' +
+            '<span class="chevron">›</span></button>' +
+          '<button class="listenzeile" data-tu="vermoegen">' +
+            '<span class="icon">💎</span>' +
+            '<span class="mitte"><span class="haupt">Vermögen</span>' +
+            '<span class="neben">' +
+              ((Daten.vermoegen || []).length
+                ? (Daten.vermoegen || []).length + ' Posten · netto ' + geld(Vermoegen.netto()) + ' €'
+                : 'Konten, Depot, Bargeld') + '</span></span>' +
+            '<span class="chevron">›</span></button>' +
+          '<button class="listenzeile" data-tu="kredit">' +
+            '<span class="icon">🏦</span>' +
+            '<span class="mitte"><span class="haupt">Kredit</span>' +
+            '<span class="neben">' +
+              ((Daten.kredite || []).length
+                ? 'Restschuld ' + geld(Vermoegen.schulden()) + ' €'
+                : 'Restschuld, Rate, Tilgungsverlauf') + '</span></span>' +
+            '<span class="chevron">›</span></button>' +
+        '</div>') +
 
         '<p class="abschnitt-titel">Verwalten</p>' +
         '<div class="liste">' +
@@ -1782,6 +1929,10 @@ function starten() {
       else if (was === 'import') Import.oeffnen();
       else if (was === 'kategorien') Kategorien.oeffnen();
       else if (was === 'regeln') RegelSchirm.oeffnen();
+      else if (was === 'fixkosten') Fixkosten.oeffnen();
+      else if (was === 'budgets') Budgets.oeffnen();
+      else if (was === 'vermoegen') Vermoegen.oeffnen();
+      else if (was === 'kredit') Kredit.oeffnen();
       else if (was === 'export') Backup.exportieren();
       else if (was === 'import-json') Backup.importieren();
       else if (was === 'alles-loeschen') Backup.allesLoeschen();

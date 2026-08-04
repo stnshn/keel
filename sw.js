@@ -5,13 +5,14 @@
  * Sonst zeigt das iPhone weiter die alte, zwischengespeicherte Version an.
  */
 
-const CACHE_VERSION = 'keel-v2';
+const CACHE_VERSION = 'keel-v3';
 
 const DATEIEN = [
   './',
   './index.html',
   './styles.css',
   './csv.js',
+  './phase2.js',
   './app.js',
   './manifest.json',
   './icons/icon-192.png',
