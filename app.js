@@ -1214,13 +1214,23 @@ const Import = {
       linksText: 'Abbrechen',
       nachOeffnen: (koerper) => {
         koerper.innerHTML =
-          '<button class="datei-knopf" id="datei-waehlen">' +
-            '<span class="gross">📄</span>' +
-            'CSV-Datei auswählen<br>' +
-            '<span style="font-size:12.5px;color:var(--text-sehrleise)">' +
-            'Der Transaktionsexport aus der Trade-Republic-App</span>' +
-          '</button>' +
-          '<input type="file" id="datei-feld" accept=".csv,text/csv,text/plain" class="versteckt">' +
+          // Das Dateifeld liegt unsichtbar ueber der gestrichelten Flaeche,
+          // damit der Finger direkt darauf tippt. Kein accept-Filter:
+          // iOS ordnet CSV-Dateien uneinheitliche Typen zu und blendet
+          // sie sonst aus oder liefert die Auswahl nicht zurueck.
+          '<div class="datei-halter">' +
+            '<div class="datei-knopf">' +
+              '<span class="gross">📄</span>' +
+              'Datei auswählen<br>' +
+              '<span style="font-size:12.5px;color:var(--text-sehrleise)">' +
+              'Der Transaktionsexport aus der Trade-Republic-App</span>' +
+            '</div>' +
+            '<input type="file" id="datei-feld">' +
+          '</div>' +
+          '<div class="datei-status" id="datei-status"></div>' +
+
+          '<button class="knopf rand" id="text-einfuegen" style="margin-top:14px">' +
+            'Klappt nicht? Text einfügen</button>' +
 
           '<p class="abschnitt-titel">So bekommst du die Datei</p>' +
           '<div class="karte" style="font-size:14px;line-height:1.65;color:var(--text-leise)">' +
@@ -1228,8 +1238,14 @@ const Import = {
             '2. Profil → Transaktionen → Export<br>' +
             '3. Zeitraum wählen und anfordern<br>' +
             '4. Die CSV kommt per E-Mail<br>' +
-            '5. Auf dem iPhone in „Dateien" sichern und hier auswählen' +
+            '5. Anhang antippen → Teilen → <b>„In Dateien sichern"</b><br>' +
+            '6. Hier oben auswählen' +
           '</div>' +
+
+          '<p class="hinweis">Liegt die Datei in iCloud Drive und ist noch nicht ' +
+            'aufs Gerät geladen (kleines Wolken-Symbol), tippe sie in der Dateien-App ' +
+            'einmal an und warte, bis das Symbol verschwindet. Vorher kann Keel sie ' +
+            'nicht öffnen.</p>' +
 
           '<p class="hinweis">Bereits vorhandene Buchungen erkennt Keel automatisch und ' +
             'überspringt sie. Du kannst dieselbe Datei also gefahrlos mehrfach einlesen. ' +
@@ -1237,27 +1253,136 @@ const Import = {
             'die Ordergebühr wird aber erfasst.</p>';
 
         const feld = koerper.querySelector('#datei-feld');
-        koerper.querySelector('#datei-waehlen').addEventListener('click', () => feld.click());
-        feld.addEventListener('change', (e) => {
-          const datei = e.target.files && e.target.files[0];
-          if (datei) this.lies(datei);
-        });
+        feld.addEventListener('change', (e) => this.dateiGewaehlt(e));
+
+        koerper.querySelector('#text-einfuegen')
+          .addEventListener('click', () => this.textEingabe());
       }
     });
   },
 
+  status: function (text, art) {
+    const el = document.getElementById('datei-status');
+    if (el) {
+      el.className = 'datei-status' + (art ? ' ' + art : '');
+      el.textContent = text || '';
+    }
+  },
+
+  dateiGewaehlt: function (e) {
+    const datei = e.target.files && e.target.files[0];
+
+    if (!datei) {
+      this.status('Es kam keine Datei zurück. Nimm „Text einfügen" weiter unten.', 'fehler');
+      return;
+    }
+
+    this.status('„' + datei.name + '" wird gelesen (' +
+                Math.max(1, Math.round(datei.size / 1024)) + ' KB) …');
+
+    // Zuruecksetzen, damit dieselbe Datei erneut gewaehlt werden kann.
+    e.target.value = '';
+
+    this.lies(datei);
+  },
+
   lies: function (datei) {
     const leser = new FileReader();
+
     leser.onload = () => {
+      let text = '';
       try {
-        this.auswerten(String(leser.result || ''));
+        const puffer = leser.result;
+
+        if (typeof puffer === 'string') {
+          text = puffer;
+        } else {
+          text = new TextDecoder('utf-8').decode(puffer);
+          // Sind viele Zeichen kaputt, war es kein UTF-8 - dann als
+          // Windows-Zeichensatz erneut versuchen (Umlaute!).
+          const kaputt = (text.match(/�/g) || []).length;
+          if (kaputt > 3) {
+            try { text = new TextDecoder('windows-1252').decode(puffer); } catch (x) {}
+          }
+        }
       } catch (fehler) {
         console.error(fehler);
-        UI.melde('Die Datei konnte nicht gelesen werden', 'fehler');
+        this.status('Die Datei konnte nicht entschlüsselt werden.', 'fehler');
+        return;
+      }
+
+      if (!text.trim()) {
+        this.status('Die Datei ist leer. Liegt sie vielleicht noch in iCloud?', 'fehler');
+        return;
+      }
+
+      this.status('Gelesen: ' + text.split('\n').length + ' Zeilen', 'gut');
+
+      try {
+        this.auswerten(text);
+      } catch (fehler) {
+        console.error(fehler);
+        this.status('Die Datei konnte nicht ausgewertet werden: ' + fehler.message, 'fehler');
       }
     };
-    leser.onerror = () => UI.melde('Die Datei konnte nicht geöffnet werden', 'fehler');
-    leser.readAsText(datei, 'utf-8');
+
+    leser.onerror = () => {
+      this.status('Die Datei ließ sich nicht öffnen. Nimm „Text einfügen".', 'fehler');
+    };
+
+    try {
+      leser.readAsArrayBuffer(datei);
+    } catch (fehler) {
+      // Sehr alte Safari-Versionen
+      leser.readAsText(datei, 'utf-8');
+    }
+  },
+
+  // Rueckfallebene: CSV-Inhalt von Hand einsetzen.
+  // Funktioniert immer, auch wenn iOS bei der Dateiauswahl zickt.
+  textEingabe: function () {
+    Blatt.oeffnen({
+      titel: 'Text einfügen',
+      linksText: 'Zurück',
+      rechtsText: 'Auswerten',
+      beiRechts: () => {
+        const feld = document.getElementById('einfuege-feld');
+        const text = feld ? feld.value : '';
+        if (!text.trim()) { UI.melde('Da ist noch nichts eingefügt', 'fehler'); return; }
+        Blatt.schliessen();
+        try {
+          this.status('Gelesen: ' + text.split('\n').length + ' Zeilen', 'gut');
+          this.auswerten(text);
+        } catch (fehler) {
+          console.error(fehler);
+          this.status('Konnte nicht ausgewertet werden: ' + fehler.message, 'fehler');
+        }
+      },
+      nachOeffnen: (koerper) => {
+        koerper.innerHTML =
+          '<p class="hinweis" style="margin-top:0">Öffne die CSV-Datei (z. B. direkt ' +
+            'im E-Mail-Anhang), markiere alles, kopiere es und füge es hier ein. ' +
+            'Die erste Zeile mit den Spaltennamen muss dabei sein.</p>' +
+          '<textarea class="einfuege-feld" id="einfuege-feld" ' +
+            'placeholder="&quot;datetime&quot;,&quot;date&quot;,&quot;account_type&quot;,…" ' +
+            'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+          '<button class="knopf" id="einfuegen-los" style="margin-top:14px">Auswerten</button>' +
+          '<div style="height:20px"></div>';
+
+        koerper.querySelector('#einfuegen-los').addEventListener('click', () => {
+          const text = koerper.querySelector('#einfuege-feld').value;
+          if (!text.trim()) { UI.melde('Da ist noch nichts eingefügt', 'fehler'); return; }
+          Blatt.schliessen();
+          try {
+            this.status('Gelesen: ' + text.split('\n').length + ' Zeilen', 'gut');
+            this.auswerten(text);
+          } catch (fehler) {
+            console.error(fehler);
+            this.status('Konnte nicht ausgewertet werden: ' + fehler.message, 'fehler');
+          }
+        });
+      }
+    });
   },
 
   auswerten: function (text) {
@@ -1271,6 +1396,7 @@ const Import = {
     const ergebnis = TradeRepublic.auswerten(text, ids, hashes);
 
     if (ergebnis.fehler) {
+      this.status(ergebnis.fehler, 'fehler');
       alert(ergebnis.fehler + '\n\nGefundene Spalten:\n' +
             (ergebnis.gefundeneSpalten || []).join(', '));
       return;
@@ -1526,26 +1652,66 @@ const Backup = {
       linksText: 'Abbrechen',
       nachOeffnen: (koerper) => {
         koerper.innerHTML =
-          '<button class="datei-knopf" id="j-waehlen">' +
-            '<span class="gross">♻️</span>' +
-            'Backup-Datei auswählen<br>' +
-            '<span style="font-size:12.5px;color:var(--text-sehrleise)">' +
-            'Eine zuvor gesicherte keel-backup-….json</span>' +
-          '</button>' +
-          '<input type="file" id="j-feld" accept=".json,application/json" class="versteckt">' +
+          '<div class="datei-halter">' +
+            '<div class="datei-knopf">' +
+              '<span class="gross">♻️</span>' +
+              'Backup-Datei auswählen<br>' +
+              '<span style="font-size:12.5px;color:var(--text-sehrleise)">' +
+              'Eine zuvor gesicherte keel-backup-….json</span>' +
+            '</div>' +
+            '<input type="file" id="j-feld">' +
+          '</div>' +
+          '<div class="datei-status" id="j-status"></div>' +
+
+          '<button class="knopf rand" id="j-text" style="margin-top:14px">' +
+            'Klappt nicht? Text einfügen</button>' +
+
           '<p class="hinweis" style="margin-top:16px">Achtung: Beim Einspielen werden ' +
             '<b>alle jetzigen Daten ersetzt</b>. Sichere vorher den aktuellen Stand, ' +
             'falls du ihn noch brauchst.</p>';
 
-        const feld = koerper.querySelector('#j-feld');
-        koerper.querySelector('#j-waehlen').addEventListener('click', () => feld.click());
-        feld.addEventListener('change', (e) => {
+        const status = (t, art) => {
+          const el = koerper.querySelector('#j-status');
+          if (el) { el.className = 'datei-status' + (art ? ' ' + art : ''); el.textContent = t; }
+        };
+
+        koerper.querySelector('#j-feld').addEventListener('change', (e) => {
           const datei = e.target.files && e.target.files[0];
-          if (!datei) return;
+          if (!datei) { status('Es kam keine Datei zurück. Nimm „Text einfügen".', 'fehler'); return; }
+          status('„' + datei.name + '" wird gelesen …');
+          e.target.value = '';
+
           const leser = new FileReader();
-          leser.onload = () => this.einspielen(String(leser.result || ''));
-          leser.onerror = () => UI.melde('Datei konnte nicht gelesen werden', 'fehler');
+          leser.onload = () => {
+            const text = String(leser.result || '');
+            if (!text.trim()) { status('Die Datei ist leer. Liegt sie noch in iCloud?', 'fehler'); return; }
+            this.einspielen(text);
+          };
+          leser.onerror = () => status('Die Datei ließ sich nicht öffnen.', 'fehler');
           leser.readAsText(datei, 'utf-8');
+        });
+
+        koerper.querySelector('#j-text').addEventListener('click', () => {
+          Blatt.oeffnen({
+            titel: 'Backup einfügen',
+            linksText: 'Zurück',
+            nachOeffnen: (k2) => {
+              k2.innerHTML =
+                '<p class="hinweis" style="margin-top:0">Öffne die Backup-Datei, ' +
+                  'kopiere den gesamten Inhalt und füge ihn hier ein.</p>' +
+                '<textarea class="einfuege-feld" id="j-einfuege" placeholder="{ &quot;app&quot;: &quot;Keel&quot;, … }" ' +
+                  'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>' +
+                '<button class="knopf" id="j-los" style="margin-top:14px">Einspielen</button>' +
+                '<div style="height:20px"></div>';
+
+              k2.querySelector('#j-los').addEventListener('click', () => {
+                const text = k2.querySelector('#j-einfuege').value;
+                if (!text.trim()) { UI.melde('Da ist noch nichts eingefügt', 'fehler'); return; }
+                Blatt.schliessen();
+                this.einspielen(text);
+              });
+            }
+          });
         });
       }
     });

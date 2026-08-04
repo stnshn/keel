@@ -296,15 +296,19 @@ select {
 
 /* ---------- Blatt / Modal ---------- */
 
+/* Wichtig: Der Ruhezustand ist der SICHTBARE Zustand, die Animation
+   laeuft nur von aussen dorthin. Andersherum (Start unsichtbar, Ende
+   per "forwards") wuerde das Blatt unterhalb des Bildschirms haengen
+   bleiben, falls die Animation einmal nicht laeuft. */
 .blatt-hinter {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(0, 0, 0, 0.62);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
-  opacity: 0;
-  animation: einblenden 0.18s ease forwards;
+  opacity: 1;
+  animation: einblenden 0.18s ease;
 }
-@keyframes einblenden { to { opacity: 1; } }
+@keyframes einblenden { from { opacity: 0; } }
 
 .blatt {
   position: fixed;
@@ -315,10 +319,16 @@ select {
   background: var(--bg-erhoben);
   border-radius: var(--r-l) var(--r-l) 0 0;
   padding-bottom: var(--sicher-unten);
-  transform: translateY(100%);
-  animation: hochfahren 0.26s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  transform: translateY(0);
+  animation: hochfahren 0.26s cubic-bezier(0.32, 0.72, 0, 1);
 }
-@keyframes hochfahren { to { transform: translateY(0); } }
+@keyframes hochfahren { from { transform: translateY(100%); } }
+
+/* Wer im iPhone "Bewegung reduzieren" eingeschaltet hat, bekommt
+   die Blaetter ohne Animation - sie sind trotzdem korrekt platziert. */
+@media (prefers-reduced-motion: reduce) {
+  .blatt, .blatt-hinter, .toast { animation: none; }
+}
 
 .blatt-kopf {
   display: flex; align-items: center; gap: 12px;
@@ -541,9 +551,46 @@ select {
   color: var(--text-leise);
   font-size: 14.5px;
   line-height: 1.6;
+  pointer-events: none;   /* der Tipp geht an das darueberliegende Dateifeld */
 }
 .datei-knopf .gross { font-size: 32px; display: block; margin-bottom: 8px; }
-.datei-knopf:active { border-color: var(--akzent); }
+.datei-halter:active .datei-knopf { border-color: var(--akzent); }
+
+/* Das echte Dateifeld liegt unsichtbar ueber der gestrichelten Flaeche.
+   Wichtig fuer iOS: NICHT display:none verwenden - Safari liefert bei
+   ausgeblendeten Feldern die getroffene Auswahl teilweise nicht zurueck.
+   So tippt der Finger direkt auf das Feld selbst. */
+.datei-halter { position: relative; }
+.datei-halter input[type="file"] {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  opacity: 0;
+  margin: 0; padding: 0; border: 0;
+  background: none;
+  font-size: 100px;   /* vergroessert die Trefferflaeche in aelteren Safari-Versionen */
+  cursor: pointer;
+}
+
+.datei-status {
+  font-size: 13px;
+  text-align: center;
+  padding: 12px 6px 0;
+  line-height: 1.55;
+  min-height: 20px;
+  color: var(--text-leise);
+}
+.datei-status.fehler { color: var(--minus); }
+.datei-status.gut    { color: var(--plus); }
+
+.einfuege-feld {
+  width: 100%;
+  min-height: 190px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
 
 /* ---------- Meldung / Toast ---------- */
 
