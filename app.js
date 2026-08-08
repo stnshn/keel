@@ -60,7 +60,7 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 2,
+      version: 3,
       erstellt: new Date().toISOString(),
       buchungen: [],
       kategorien: STANDARD_KATEGORIEN.map((k) => Object.assign({}, k)),
@@ -69,7 +69,14 @@ const Speicher = {
       budgets: {},
       vermoegen: [],
       kredite: [],
-      einstellungen: {}
+      notgroschen: { standCent: 0, zielCent: 0 },
+      sparziele: [],
+      einstellungen: {
+        name: '',
+        mindestnettoCent: 0,
+        sparrateCent: 0,
+        gehaltVerschieben: true
+      }
     };
   },
 
@@ -114,7 +121,29 @@ const Speicher = {
     d.vermoegen.forEach((p) => { if (!Array.isArray(p.staende)) p.staende = []; });
     d.kredite.forEach((k)   => { if (!Array.isArray(k.staende)) k.staende = []; });
 
-    d.version = 2;
+    // --- Erweiterung auf Version 3 (neue Startseite) ---
+    d.notgroschen = d.notgroschen && typeof d.notgroschen === 'object'
+      ? d.notgroschen : { standCent: 0, zielCent: 0 };
+    d.notgroschen.standCent = Number(d.notgroschen.standCent) || 0;
+    d.notgroschen.zielCent  = Number(d.notgroschen.zielCent) || 0;
+
+    d.sparziele = Array.isArray(d.sparziele) ? d.sparziele : [];
+    d.sparziele.forEach((z) => {
+      z.standCent = Number(z.standCent) || 0;
+      z.zielCent  = Number(z.zielCent) || 0;
+    });
+    // Genau ein Ziel gehört auf die Startseite.
+    if (d.sparziele.length && !d.sparziele.some((z) => z.aufStartseite)) {
+      d.sparziele[0].aufStartseite = true;
+    }
+
+    const e = d.einstellungen;
+    if (typeof e.name !== 'string') e.name = '';
+    e.mindestnettoCent = Number(e.mindestnettoCent) || 0;
+    e.sparrateCent     = Number(e.sparrateCent) || 0;
+    if (typeof e.gehaltVerschieben !== 'boolean') e.gehaltVerschieben = true;
+
+    d.version = 3;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
@@ -235,9 +264,37 @@ function zaehltMit(b) {
   return !(k && k.ausBilanz);
 }
 
+/* ------------------------------------------------------------
+   Gehalt am Monatsende gilt für den Folgemonat
+   ------------------------------------------------------------
+   Zahlungen in der zweiten Monatshälfte zählen für den nächsten
+   Monat. Das trifft den Normalfall (Gehalt am 28.03. gehört zum
+   April) und fängt auch verspätete Zahlungen richtig ab: kommt
+   das April-Gehalt erst am 02.04., liegt es in der ersten
+   Monatshälfte und zählt damit ebenfalls für April.
+
+   Die Regel gilt nur für Buchungen der Kategorie "Gehalt".
+   ------------------------------------------------------------ */
+function istGehalt(b) {
+  return b.typ === 'einnahme' && b.kategorieId === 'gehalt';
+}
+
+function wirkMonat(b) {
+  const monat = monatVon(b.datum);
+  if (!istGehalt(b)) return monat;
+  if (Daten.einstellungen.gehaltVerschieben === false) return monat;
+  const tag = parseInt(b.datum.slice(8, 10), 10);
+  return tag >= 16 ? monatVerschieben(monat, 1) : monat;
+}
+
+// Zählt die Buchung in einem anderen Monat, als ihr Datum sagt?
+function istVerschoben(b) {
+  return wirkMonat(b) !== monatVon(b.datum);
+}
+
 function buchungenImMonat(monat, art) {
   return Daten.buchungen.filter((b) =>
-    monatVon(b.datum) === monat && (!art || b.typ === art)
+    wirkMonat(b) === monat && (!art || b.typ === art)
   );
 }
 
@@ -405,9 +462,10 @@ const Blatt = {
 const UI = {
 
   zustand: {
-    schirm: 'uebersicht',
+    schirm: 'start',
     monat: monatVon(heuteISO()),
-    suche: ''
+    suche: '',
+    listenArt: 'ausgabe'
   },
 
   melde: function (text, art) {
@@ -433,14 +491,103 @@ const UI = {
     const ziel = document.getElementById('schirm');
     const s = this.zustand.schirm;
 
-    if (s === 'uebersicht')      ziel.innerHTML = this.uebersicht();
-    else if (s === 'ausgaben')   ziel.innerHTML = this.buchungsListe('ausgabe');
-    else if (s === 'einnahmen')  ziel.innerHTML = this.buchungsListe('einnahme');
-    else if (s === 'mehr')       ziel.innerHTML = this.mehr();
+    if (s === 'start')          ziel.innerHTML = Start.html();
+    else if (s === 'einaus')    ziel.innerHTML = EinAus.html();
+    else if (s === 'vermoegen') ziel.innerHTML = this.vermoegenSchirm();
+    else if (s === 'mehr')      ziel.innerHTML = this.mehr();
+    else if (s === 'liste')     ziel.innerHTML = this.buchungsListe(this.zustand.listenArt);
 
     document.querySelectorAll('.nav button[data-schirm]').forEach((b) => {
       b.classList.toggle('an', b.dataset.schirm === s);
     });
+
+    if (typeof Diagramm !== 'undefined') Diagramm.verdrahte(ziel);
+  },
+
+  /* ---------- Schirm: Vermögen ---------- */
+
+  vermoegenSchirm: function () {
+    if (typeof Vermoegen === 'undefined') {
+      return '<div class="kopf"><h1>Vermögen</h1></div>' +
+             '<div class="leer-hinweis">Nicht verfügbar.</div>';
+    }
+
+    const posten = Daten.vermoegen || [];
+    const netto = Vermoegen.netto();
+    const brutto = Vermoegen.brutto();
+    const schulden = Vermoegen.schulden();
+    const verlauf = Vermoegen.verlauf(true);
+
+    let veraenderung = '';
+    if (verlauf.length > 1) {
+      const diff = netto - verlauf[0].cent;
+      veraenderung = '<div class="hero-tage">' + (diff >= 0 ? '▲ ' : '▼ ') +
+        geld(Math.abs(diff)) + ' € seit ' + esc(datumText(verlauf[0].datum)) + '</div>';
+    }
+
+    const diagramm = verlauf.length > 1
+      ? '<div class="karte"><p class="karte-titel">Nettovermögen im Verlauf</p>' +
+        Diagramm.verlauf(verlauf, DIAGRAMM.vermoegen, { titel: 'Nettovermögen im Verlauf' }) + '</div>'
+      : '';
+
+    const liste = posten.length
+      ? '<div class="liste">' + posten.slice()
+          .sort((a, b) => Vermoegen.letzterStand(b) - Vermoegen.letzterStand(a))
+          .map((p) => {
+            const art = VERMOEGENSARTEN[p.art] || VERMOEGENSARTEN.sonstiges;
+            const letzte = (p.staende || []).length ? p.staende[p.staende.length - 1].datum : null;
+            return '<button class="listenzeile" data-tu="vermoegen-posten" data-id="' + esc(p.id) + '">' +
+              '<span class="icon">' + esc(p.emoji || art.emoji) + '</span>' +
+              '<span class="mitte"><span class="haupt">' + esc(p.name) + '</span>' +
+                '<span class="neben">' + esc(art.name) +
+                (letzte ? ' · Stand vom ' + esc(datumText(letzte)) : ' · noch kein Stand') + '</span></span>' +
+              '<span class="rechts mono">' + geld(Vermoegen.letzterStand(p)) + ' €</span></button>';
+          }).join('') + '</div>'
+      : '<button class="karte karte-knopf leer-karte" data-tu="vermoegen-neu">' +
+          '<span class="leer-symbol">💎</span>' +
+          '<span class="leer-text"><b>Ersten Posten anlegen</b>' +
+          '<small>Konten, Depot, Bargeld</small></span>' +
+          '<span class="chevron">›</span></button>';
+
+    const kredite = (Daten.kredite || []).length
+      ? '<p class="abschnitt-titel">Kredite</p><div class="liste">' +
+        Daten.kredite.map((k) =>
+          '<button class="listenzeile" data-tu="kredit">' +
+            '<span class="icon">🏦</span>' +
+            '<span class="mitte"><span class="haupt">' + esc(k.name) + '</span>' +
+              '<span class="neben">Rate ' + geld(k.rateCent || 0) + ' € · ' +
+                String(k.zinssatz || 0).replace('.', ',') + ' %</span></span>' +
+            '<span class="rechts mono minus">− ' + geld(Kredit.restschuld(k)) + ' €</span></button>').join('') +
+        '</div>'
+      : '';
+
+    return '<div class="kopf"><h1>Vermögen</h1>' +
+        '<div class="unterzeile">' + posten.length + ' Posten' +
+          ((Daten.kredite || []).length ? ' · ' + Daten.kredite.length + ' Kredit' : '') + '</div></div>' +
+      '<div class="inhalt">' +
+        '<div class="karte hero">' +
+          '<div class="hero-zahl' + (netto >= 0 ? '' : ' minus') + '">' + geldE(netto) + '</div>' +
+          '<div class="hero-unter">Nettovermögen</div>' +
+          veraenderung +
+        '</div>' +
+        (schulden > 0
+          ? '<div class="zwei-spalten" style="margin-bottom:14px">' +
+              '<div class="mini-karte"><div class="label">Besitz</div>' +
+                '<div class="wert mono">' + geld(brutto) + ' €</div></div>' +
+              '<div class="mini-karte"><div class="label">Schulden</div>' +
+                '<div class="wert mono minus">− ' + geld(schulden) + ' €</div></div>' +
+            '</div>'
+          : '') +
+        diagramm +
+        (posten.length ? '<p class="abschnitt-titel">Posten</p>' : '') +
+        liste +
+        (posten.length
+          ? '<button class="knopf zweit" data-tu="vermoegen-neu" style="margin-top:12px">Posten hinzufügen</button>'
+          : '') +
+        kredite +
+        (!(Daten.kredite || []).length
+          ? '<button class="knopf rand" data-tu="kredit" style="margin-top:12px">Kredit anlegen</button>' : '') +
+      '</div>';
   },
 
   /* ---------- Monatswaehler ---------- */
@@ -451,198 +598,6 @@ const UI = {
       '<button class="aktuell" data-tu="monat-heute">' + esc(monatText(this.zustand.monat)) + '</button>' +
       '<button class="pfeil" data-tu="monat-vor" aria-label="Nächster Monat">›</button>' +
     '</div>';
-  },
-
-  /* ---------- Schirm: Übersicht ---------- */
-
-  uebersicht: function () {
-    const monat = this.zustand.monat;
-    const ein = buchungenImMonat(monat, 'einnahme');
-    const aus = buchungenImMonat(monat, 'ausgabe');
-    const summeEin = summe(ein);
-    const summeAus = summe(aus);
-    const saldo = summeEin - summeAus;
-
-    // Vergleich mit dem Vormonat
-    const vormonat = monatVerschieben(monat, -1);
-    const summeAusVor = summe(buchungenImMonat(vormonat, 'ausgabe'));
-    let vergleich = '';
-    if (summeAusVor > 0) {
-      const diff = summeAus - summeAusVor;
-      const prozent = Math.round((diff / summeAusVor) * 100);
-      const hoch = diff > 0;
-      vergleich =
-        '<div class="karte" style="display:flex;align-items:center;gap:12px">' +
-          '<div style="font-size:22px">' + (hoch ? '📈' : '📉') + '</div>' +
-          '<div style="flex:1;font-size:14px;line-height:1.45">' +
-            'Ausgaben ' + (hoch ? '<span class="minus">' : '<span class="plus">') +
-            (hoch ? '+' : '') + prozent + '&nbsp;%</span> gegenüber ' + esc(monatText(vormonat)) +
-            '<div class="leise" style="font-size:12.5px">damals ' + geldE(summeAusVor) + '</div>' +
-          '</div>' +
-        '</div>';
-    }
-
-    // Auswertung pro Kategorie
-    const proKat = {};
-    aus.forEach((b) => {
-      if (!zaehltMit(b)) return;
-      proKat[b.kategorieId] = (proKat[b.kategorieId] || 0) + b.betragCent;
-    });
-    const katListe = Object.keys(proKat)
-      .map((id) => ({ id: id, cent: proKat[id] }))
-      .sort((a, b) => b.cent - a.cent);
-
-    let katHtml = '';
-    if (katListe.length) {
-      const groesste = katListe[0].cent;
-      katHtml = '<div class="karte"><p class="karte-titel">Ausgaben nach Kategorie</p>' +
-        katListe.map((e) => {
-          const k = kategorie(e.id) || { name: 'Unbekannt', emoji: '❓' };
-          const anteil = summeAus > 0 ? Math.round((e.cent / summeAus) * 100) : 0;
-          const breite = groesste > 0 ? Math.max(3, Math.round((e.cent / groesste) * 100)) : 0;
-          return '<div class="kat-zeile">' +
-            '<div class="kat-kopf">' +
-              '<span class="emoji">' + esc(k.emoji) + '</span>' +
-              '<span class="name">' + esc(k.name) + '</span>' +
-              '<span class="betrag">' + geldE(e.cent) + '</span>' +
-              '<span class="anteil">' + anteil + '%</span>' +
-            '</div>' +
-            '<div class="balken"><i style="width:' + breite + '%;background:' + katFarbe() + '"></i></div>' +
-          '</div>';
-        }).join('') +
-      '</div>';
-    }
-
-    // Letzte Buchungen
-    const letzte = Daten.buchungen
-      .slice()
-      .sort((a, b) => (a.datum < b.datum ? 1 : a.datum > b.datum ? -1 : (b.erstellt || 0) - (a.erstellt || 0)))
-      .slice(0, 6);
-
-    let letzteHtml = '';
-    if (letzte.length) {
-      letzteHtml = '<p class="abschnitt-titel">Zuletzt erfasst</p>' +
-        letzte.map((b) => this.buchungHtml(b)).join('');
-    }
-
-    const anzahl = ein.length + aus.length;
-    const leer = anzahl === 0 ?
-      '<div class="leer-hinweis"><span class="gross">🌱</span>' +
-      'Für ' + esc(monatText(monat)) + ' ist noch nichts erfasst.<br>' +
-      'Tippe unten auf <b>+</b> oder importiere deinen Trade-Republic-Auszug unter <b>Mehr</b>.</div>' : '';
-
-    return '<div class="kopf">' +
-        '<h1>Übersicht</h1>' +
-        '<div class="unterzeile">' + anzahl + ' Buchung' + (anzahl === 1 ? '' : 'en') + ' in diesem Monat</div>' +
-        this.monatswahlHtml() +
-      '</div>' +
-      '<div class="inhalt">' +
-        '<div class="karte saldo-karte">' +
-          '<div class="saldo-wert ' + (saldo >= 0 ? 'plus' : 'minus') + '">' + geldE(saldo, true) + '</div>' +
-          '<div class="saldo-label">Saldo ' + esc(monatText(monat)) + '</div>' +
-        '</div>' +
-        '<div class="zwei-spalten" style="margin-bottom:14px">' +
-          '<div class="mini-karte"><div class="label">↓ Einnahmen</div>' +
-            '<div class="wert plus">' + geldE(summeEin) + '</div></div>' +
-          '<div class="mini-karte"><div class="label">↑ Ausgaben</div>' +
-            '<div class="wert minus">' + geldE(summeAus) + '</div></div>' +
-        '</div>' +
-        this.budgetKarte(monat) +
-        vergleich +
-        katHtml +
-        this.fixkostenKarte(monat) +
-        this.vermoegenKarte() +
-        letzteHtml +
-        leer +
-      '</div>';
-  },
-
-  /* ---------- Übersichtskarten aus Phase 2 ---------- */
-
-  // Budget-Status auf einen Blick. Farbe ist nie der einzige Kanal:
-  // Symbol, Wort und Zahlen sagen dasselbe.
-  budgetKarte: function (monat) {
-    if (typeof Budgets === 'undefined') return '';
-    const liste = Budgets.uebersicht(monat);
-    if (!liste.length) return '';
-
-    const kritisch = liste.filter((e) => e.anteil >= 0.8);
-    const zeigen = (kritisch.length ? kritisch : liste).slice(0, 4);
-    const gesamtGrenze = liste.reduce((s, e) => s + e.grenze, 0);
-    const gesamtIst = liste.reduce((s, e) => s + e.ist, 0);
-    const frei = gesamtGrenze - gesamtIst;
-
-    return '<button class="karte karte-knopf" data-tu="budgets">' +
-      '<p class="karte-titel">Budget ' + esc(monatText(monat)) +
-        '<span class="karte-pfeil">›</span></p>' +
-      '<div class="budget-kopf">' +
-        '<span class="' + (frei >= 0 ? '' : 'minus') + '">' +
-          (frei >= 0 ? geld(frei) + ' € frei' : geld(-frei) + ' € darüber') + '</span>' +
-        '<span class="leise mono">' + geld(gesamtIst) + ' / ' + geld(gesamtGrenze) + ' €</span>' +
-      '</div>' +
-      zeigen.map((e) => {
-        const k = kategorie(e.kategorieId) || { name: '?', emoji: '❓' };
-        const breite = Math.min(100, Math.round(e.anteil * 100));
-        return '<div class="kat-zeile">' +
-          '<div class="kat-kopf">' +
-            '<span class="emoji">' + esc(k.emoji) + '</span>' +
-            '<span class="name">' + esc(k.name) + '</span>' +
-            '<span class="budget-marke" style="color:' + e.status.farbe + '">' +
-              e.status.symbol + ' ' + esc(e.status.wort) + '</span>' +
-            '<span class="anteil">' + Math.round(e.anteil * 100) + '%</span>' +
-          '</div>' +
-          '<div class="balken"><i style="width:' + breite + '%;background:' + e.status.farbe + '"></i></div>' +
-        '</div>';
-      }).join('') +
-      (liste.length > zeigen.length
-        ? '<div class="leise" style="font-size:12px;margin-top:10px">und ' +
-          (liste.length - zeigen.length) + ' weitere im Rahmen</div>'
-        : '') +
-    '</button>';
-  },
-
-  fixkostenKarte: function (monat) {
-    if (typeof Fixkosten === 'undefined') return '';
-    const aktive = (Daten.fixkosten || []).filter((f) => f.aktiv !== false);
-    if (!aktive.length) return '';
-
-    const summeFix = Fixkosten.monatsSumme();
-    const faellig = aktive.filter((f) => Fixkosten.faelligImMonat(f, monat));
-    const erledigt = faellig.filter((f) => Fixkosten.schonAbgebucht(f, monat));
-
-    return '<button class="karte karte-knopf" data-tu="fixkosten">' +
-      '<p class="karte-titel">Fixkosten<span class="karte-pfeil">›</span></p>' +
-      '<div class="budget-kopf">' +
-        '<span>' + geld(summeFix) + ' € im Monat</span>' +
-        '<span class="leise">' + erledigt.length + ' von ' + faellig.length + ' abgebucht</span>' +
-      '</div>' +
-      '<div class="balken" style="margin-top:4px"><i style="width:' +
-        (faellig.length ? Math.round(erledigt.length / faellig.length * 100) : 0) +
-        '%;background:' + DIAGRAMM.serie + '"></i></div>' +
-    '</button>';
-  },
-
-  vermoegenKarte: function () {
-    if (typeof Vermoegen === 'undefined') return '';
-    if (!(Daten.vermoegen || []).length && !(Daten.kredite || []).length) return '';
-
-    const netto = Vermoegen.netto();
-    const verlauf = Vermoegen.verlauf(true);
-    let trend = '';
-    if (verlauf.length > 1) {
-      const diff = netto - verlauf[0].cent;
-      trend = '<span class="leise">' + (diff >= 0 ? '▲ ' : '▼ ') + geld(Math.abs(diff)) +
-              ' € seit ' + esc(datumText(verlauf[0].datum)) + '</span>';
-    }
-
-    return '<button class="karte karte-knopf" data-tu="vermoegen">' +
-      '<p class="karte-titel">Vermögen<span class="karte-pfeil">›</span></p>' +
-      '<div class="budget-kopf">' +
-        '<span class="' + (netto >= 0 ? 'plus' : 'minus') + '" style="font-size:20px;font-weight:700">' +
-          geld(netto) + ' €</span>' +
-        trend +
-      '</div>' +
-    '</button>';
   },
 
   /* ---------- Schirm: Ausgaben / Einnahmen ---------- */
@@ -686,6 +641,10 @@ const UI = {
                : 'Keine ' + titel + ' in ' + esc(monatText(monat)) + '.') + '</div>';
 
     return '<div class="kopf">' +
+        '<div class="kopf-reihe">' +
+          '<button class="zurueck" data-tu="zurueck-einaus">‹ Ein &amp; Aus</button>' +
+          '<button class="kopf-plus" data-tu="neue-buchung" aria-label="Buchung erfassen">+</button>' +
+        '</div>' +
         '<h1>' + titel + '</h1>' +
         '<div class="unterzeile">' + liste.length + ' Buchung' + (liste.length === 1 ? '' : 'en') +
           ' · ' + geldE(gesamt) + '</div>' +
@@ -707,6 +666,7 @@ const UI = {
 
     const untertitel = [];
     untertitel.push(k.name);
+    if (istVerschoben(b)) untertitel.push('zählt für ' + monatText(wirkMonat(b)).split(' ')[0]);
     if (b.wiederkehrend) untertitel.push('🔁 wiederkehrend');
     if (b.quelle === 'csv') untertitel.push('importiert');
     if (b.notiz) untertitel.push(b.notiz);
@@ -732,20 +692,27 @@ const UI = {
         '<div class="unterzeile">' + anzahl + ' Buchungen insgesamt</div></div>' +
       '<div class="inhalt">' +
 
-        '<p class="abschnitt-titel">Erfassen</p>' +
+        '<p class="abschnitt-titel">Dein Geld</p>' +
         '<div class="liste">' +
-          '<button class="listenzeile" data-tu="import">' +
-            '<span class="icon">📥</span>' +
-            '<span class="mitte"><span class="haupt">Trade Republic importieren</span>' +
-            '<span class="neben">CSV-Kontoauszug einlesen</span></span>' +
+          '<button class="listenzeile" data-tu="einstellungen">' +
+            '<span class="icon">⚙️</span>' +
+            '<span class="mitte"><span class="haupt">Einkommen &amp; Name</span>' +
+            '<span class="neben">' +
+              (Daten.einstellungen.mindestnettoCent
+                ? 'Mindestnetto ' + geld(Daten.einstellungen.mindestnettoCent) + ' €'
+                : 'noch nicht eingerichtet') + '</span></span>' +
             '<span class="chevron">›</span></button>' +
-        '</div>' +
-
-        // Der Planen-Bereich stammt aus phase2.js. Fehlt die Datei,
-        // laeuft die App ohne diesen Abschnitt einfach weiter.
-        (typeof Fixkosten === 'undefined' ? '' :
-        '<p class="abschnitt-titel">Planen</p>' +
-        '<div class="liste">' +
+          (typeof Sparen === 'undefined' ? '' :
+          '<button class="listenzeile" data-tu="sparen">' +
+            '<span class="icon">🛟</span>' +
+            '<span class="mitte"><span class="haupt">Sparen</span>' +
+            '<span class="neben">' +
+              (Daten.einstellungen.sparrateCent
+                ? geld(Daten.einstellungen.sparrateCent) + ' € im Monat · ' +
+                  (Daten.sparziele || []).length + ' Ziel' + ((Daten.sparziele || []).length === 1 ? '' : 'e')
+                : 'Sparrate, Notgroschen, Sparziele') + '</span></span>' +
+            '<span class="chevron">›</span></button>') +
+          (typeof Fixkosten === 'undefined' ? '' :
           '<button class="listenzeile" data-tu="fixkosten">' +
             '<span class="icon">📌</span>' +
             '<span class="mitte"><span class="haupt">Fixkosten</span>' +
@@ -762,24 +729,32 @@ const UI = {
                 ? Object.keys(Daten.budgets).length + ' Kategorien begrenzt · ' +
                   geld(Budgets.gesamt()) + ' € gesamt'
                 : 'Monatsgrenze pro Kategorie') + '</span></span>' +
+            '<span class="chevron">›</span></button>') +
+        '</div>' +
+
+        '<p class="abschnitt-titel">Buchungen</p>' +
+        '<div class="liste">' +
+          '<button class="listenzeile" data-tu="import">' +
+            '<span class="icon">📥</span>' +
+            '<span class="mitte"><span class="haupt">Trade Republic importieren</span>' +
+            '<span class="neben">CSV-Kontoauszug einlesen</span></span>' +
             '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="vermoegen">' +
-            '<span class="icon">💎</span>' +
-            '<span class="mitte"><span class="haupt">Vermögen</span>' +
-            '<span class="neben">' +
-              ((Daten.vermoegen || []).length
-                ? (Daten.vermoegen || []).length + ' Posten · netto ' + geld(Vermoegen.netto()) + ' €'
-                : 'Konten, Depot, Bargeld') + '</span></span>' +
+          '<button class="listenzeile" data-tu="neue-buchung">' +
+            '<span class="icon">✏️</span>' +
+            '<span class="mitte"><span class="haupt">Buchung erfassen</span>' +
+            '<span class="neben">Von Hand eintragen, z. B. Bargeld</span></span>' +
             '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="kredit">' +
-            '<span class="icon">🏦</span>' +
-            '<span class="mitte"><span class="haupt">Kredit</span>' +
-            '<span class="neben">' +
-              ((Daten.kredite || []).length
-                ? 'Restschuld ' + geld(Vermoegen.schulden()) + ' €'
-                : 'Restschuld, Rate, Tilgungsverlauf') + '</span></span>' +
+          '<button class="listenzeile" data-tu="liste-ausgaben">' +
+            '<span class="icon">🧾</span>' +
+            '<span class="mitte"><span class="haupt">Alle Ausgaben</span>' +
+            '<span class="neben">Einzelbuchungen ansehen und korrigieren</span></span>' +
             '<span class="chevron">›</span></button>' +
-        '</div>') +
+          '<button class="listenzeile" data-tu="liste-einnahmen">' +
+            '<span class="icon">💰</span>' +
+            '<span class="mitte"><span class="haupt">Alle Einnahmen</span>' +
+            '<span class="neben">Einzelbuchungen ansehen und korrigieren</span></span>' +
+            '<span class="chevron">›</span></button>' +
+        '</div>' +
 
         '<p class="abschnitt-titel">Verwalten</p>' +
         '<div class="liste">' +
@@ -1885,7 +1860,7 @@ const Backup = {
     sichern();
     Blatt.alleSchliessen();
     UI.zustand.monat = monatVon(heuteISO());
-    UI.zeige('uebersicht');
+    UI.zeige('start');
     UI.melde(anzahl + ' Buchungen wiederhergestellt', 'gut');
   },
 
@@ -1896,7 +1871,7 @@ const Backup = {
 
     Daten = Speicher.leer();
     sichern();
-    UI.zeige('uebersicht');
+    UI.zeige('start');
     UI.melde('Alle Daten gelöscht');
   }
 };
@@ -1911,9 +1886,8 @@ function starten() {
   const nav = document.querySelector('.nav');
   nav.addEventListener('click', (e) => {
     const knopf = e.target.closest('button');
-    if (!knopf) return;
-    if (knopf.classList.contains('fab')) { Erfassung.oeffnen(null); return; }
-    if (knopf.dataset.schirm) UI.zeige(knopf.dataset.schirm);
+    if (!knopf || !knopf.dataset.schirm) return;
+    UI.zeige(knopf.dataset.schirm);
   });
 
   // --- Alles im Schirm ueber einen Zuhoerer abwickeln ---
@@ -1931,11 +1905,26 @@ function starten() {
       else if (was === 'regeln') RegelSchirm.oeffnen();
       else if (was === 'fixkosten') Fixkosten.oeffnen();
       else if (was === 'budgets') Budgets.oeffnen();
-      else if (was === 'vermoegen') Vermoegen.oeffnen();
       else if (was === 'kredit') Kredit.oeffnen();
+      else if (was === 'sparen') Sparen.oeffnen();
+      else if (was === 'einstellungen') Einstellungen.oeffnen();
+      else if (was === 'neue-buchung') Erfassung.oeffnen(null);
+      else if (was === 'vermoegen-neu') Vermoegen.bearbeiten(null);
+      else if (was === 'vermoegen-posten') Vermoegen.bearbeiten(tu.dataset.id);
+      else if (was === 'liste-ausgaben')  { UI.zustand.listenArt = 'ausgabe';  UI.zeige('liste'); }
+      else if (was === 'liste-einnahmen') { UI.zustand.listenArt = 'einnahme'; UI.zeige('liste'); }
+      else if (was === 'zurueck-einaus')  UI.zeige('einaus');
+      else if (was.indexOf('zeitraum') === 0) { /* siehe unten */ }
       else if (was === 'export') Backup.exportieren();
       else if (was === 'import-json') Backup.importieren();
       else if (was === 'alles-loeschen') Backup.allesLoeschen();
+      return;
+    }
+
+    const zeitraum = e.target.closest('[data-zeitraum]');
+    if (zeitraum) {
+      Start.zeitraum = parseInt(zeitraum.dataset.zeitraum, 10) || 1;
+      UI.zeichne();
       return;
     }
 

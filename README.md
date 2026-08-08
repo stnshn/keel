@@ -40,6 +40,7 @@ gedacht für den Home-Bildschirm.
 | `app.js` | Datenhaltung, Oberfläche, Erfassung, Import, Backup |
 | `csv.js` | CSV-Leser, Trade-Republic-Übersetzung, MCC- und Anbieter-Verzeichnis |
 | `phase2.js` | Fixkosten, Budgets, Vermögen, Kredit, SVG-Verlaufsdiagramme |
+| `start.js` | Startseite, Reiter „Ein & Aus", Sparen, Einstellungen |
 | `sw.js` | Service Worker für den Offline-Betrieb |
 | `manifest.json` | App-Beschreibung für den Home-Bildschirm |
 | `icons/` | App-Symbole |

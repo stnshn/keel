@@ -244,16 +244,49 @@ const Fixkosten = {
   },
 
   // Wurde dieser Posten im laufenden Monat schon abgebucht?
-  // Abgleich über den gelernten Händlernamen, sonst über den Namen.
+  //
+  // Der Name allein reicht nicht: Beim Fitnessstudio steht neben dem
+  // Monatsbeitrag über 24 € auch jede Cola an der Theke im Auszug.
+  // Deshalb zählt zusätzlich der Betrag - gesucht wird die Buchung,
+  // die dem erwarteten Betrag am nächsten kommt. Alles unter der
+  // Hälfte oder über dem Doppelten gilt nicht als Treffer.
   schonAbgebucht: function (fk, monat) {
     const suche = (fk.erkennung || TradeRepublic.normalisiere(fk.name) || '').trim();
     if (!suche) return null;
-    return Daten.buchungen.find((b) =>
+
+    const kandidaten = Daten.buchungen.filter((b) =>
       b.typ === 'ausgabe' &&
-      monatVon(b.datum) === monat &&
-      ((b.normHaendler && b.normHaendler === suche) ||
-       (b.normHaendler && b.normHaendler.indexOf(suche) !== -1))
-    ) || null;
+      wirkMonat(b) === monat &&
+      b.normHaendler &&
+      b.normHaendler.indexOf(suche) !== -1);
+
+    if (!kandidaten.length) return null;
+
+    const plan = fk.betragCent;
+    if (!plan) return kandidaten[0];
+
+    const passend = kandidaten.filter((b) =>
+      b.betragCent >= plan * 0.5 && b.betragCent <= plan * 2);
+    if (!passend.length) return null;
+
+    passend.sort((a, b) =>
+      Math.abs(a.betragCent - plan) - Math.abs(b.betragCent - plan));
+    return passend[0];
+  },
+
+  // Welche Buchungen des Monats sind bereits erkannte Fixkosten?
+  // Nötig, um sie nicht zweimal zu zählen: einmal als Fixkosten,
+  // einmal als normale Ausgabe.
+  abgeglichen: function (monat) {
+    const ids = new Set();
+    let cent = 0;
+    (Daten.fixkosten || []).forEach((f) => {
+      if (f.aktiv === false) return;
+      if (!this.faelligImMonat(f, monat)) return;
+      const b = this.schonAbgebucht(f, monat);
+      if (b && !ids.has(b.id)) { ids.add(b.id); cent += b.betragCent; }
+    });
+    return { ids: ids, cent: cent };
   },
 
   oeffnen: function () {

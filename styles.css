@@ -263,35 +263,20 @@ select {
   -webkit-backdrop-filter: saturate(180%) blur(18px);
   border-top: 1px solid var(--linie);
   display: grid;
-  grid-template-columns: 1fr 1fr 78px 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   align-items: stretch;
 }
 .nav button {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: 3px;
+  gap: 4px;
   color: var(--text-sehrleise);
   font-size: 10.5px;
   font-weight: 500;
-  padding-top: 6px;
+  padding-top: 5px;
 }
 .nav button svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .nav button.an { color: var(--akzent); }
-
-.fab-halter { position: relative; }
-.fab {
-  position: absolute;
-  left: 50%; top: -20px;
-  transform: translateX(-50%);
-  width: 60px; height: 60px;
-  border-radius: 50%;
-  background: var(--akzent);
-  color: #04231F;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 33px; font-weight: 300;
-  box-shadow: 0 6px 20px rgba(45, 212, 191, 0.34);
-}
-.fab:active { transform: translateX(-50%) scale(0.93); }
 
 /* ---------- Blatt / Modal ---------- */
 
@@ -762,3 +747,170 @@ select {
   font-variant-numeric: tabular-nums;
   margin-bottom: 2px;
 }
+
+/* ============================================================
+   Neue Startseite
+   ============================================================ */
+
+/* Diagrammfarben. Bewusst nicht die UI-Akzentfarbe: für Flächen im
+   Dunkelmodus ist ein engeres Helligkeitsband nötig, sonst blendet es.
+   Fixkosten und Sparen sind zwei Stufen desselben Blaus — beides ist
+   fest verplant, und zwei getrennte Farbtöne wären bei Rot-Grün-
+   Sehschwäche nicht zu unterscheiden. */
+:root {
+  --dg-teal:      #00A997;
+  --dg-blau:      #3292FF;
+  --dg-blau-tief: #0072DC;
+}
+
+.start-kopf {
+  padding: calc(var(--sicher-oben) + 16px) 16px 6px;
+  margin-top: calc(-1 * var(--sicher-oben));
+}
+.gruss {
+  font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
+  text-wrap: balance;
+}
+.gruss-unter { font-size: 12.5px; color: var(--text-sehrleise); margin-top: 1px; }
+
+/* Große Kennzahlen: normale Ziffernbreiten. Tabellenziffern lassen
+   eine "121" bei dieser Größe locker auseinanderfallen. */
+.hero { text-align: center; padding: 24px 16px 22px; }
+.hero-zahl {
+  font-size: 44px; font-weight: 700;
+  letter-spacing: -1.6px; line-height: 1.05;
+}
+.hero-zahl.warn  { color: var(--warn); }
+.hero-zahl.minus { color: var(--minus); }
+.hero-unter { color: var(--text-leise); font-size: 13.5px; margin-top: 7px; }
+.hero-tage  { color: var(--text-sehrleise); font-size: 12px; margin-top: 3px; }
+.hero-schaetzung {
+  color: var(--text-sehrleise); font-size: 11.5px; margin-top: 10px;
+  padding-top: 9px; border-top: 1px solid var(--linie);
+}
+
+.karte-summe {
+  margin-left: auto; font-size: 12px;
+  color: var(--text-leise); font-variant-numeric: tabular-nums;
+  letter-spacing: 0; text-transform: none; font-weight: 600;
+}
+
+/* Sparfortschritt */
+.spar-kopf {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 9px;
+}
+.spar-stand { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.spar-ziel  { font-size: 12.5px; color: var(--text-leise); font-variant-numeric: tabular-nums; }
+.spar-balken { height: 9px; background: var(--karte-hell); border-radius: 5px; overflow: hidden; }
+.spar-balken > i {
+  display: block; height: 100%; border-radius: 5px;
+  background: var(--dg-teal);
+  transition: width 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) { .spar-balken > i { transition: none; } }
+.spar-fuss {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 12px; color: var(--text-sehrleise); margin-top: 8px;
+}
+.spar-prozent { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-leise); }
+.spar-weitere {
+  font-size: 11.5px; color: var(--text-sehrleise);
+  margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--linie);
+}
+
+/* Leere Karte als Einladung */
+.leer-karte {
+  display: flex; align-items: center; gap: 13px;
+  padding: 16px;
+}
+.leer-symbol { font-size: 24px; flex: 0 0 auto; }
+.leer-text { flex: 1; text-align: left; font-size: 15px; }
+.leer-text small {
+  display: block; color: var(--text-sehrleise);
+  font-size: 12.5px; margin-top: 1px;
+}
+
+/* Zeitraum-Umschalter */
+.zeitschalter {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--karte-hell); border-radius: 10px;
+  padding: 3px; gap: 3px; margin-bottom: 14px;
+}
+.zeitschalter button {
+  font-size: 12.5px; font-weight: 600;
+  padding: 7px 0; border-radius: 8px;
+  color: var(--text-leise);
+}
+.zeitschalter button[aria-pressed="true"] { background: var(--karte); color: var(--text); }
+
+/* ---------- Ein & Aus ---------- */
+
+.band { display: flex; gap: 2px; height: 15px; margin: 2px 0 13px; }
+.band > i { display: block; height: 100%; }
+.band > i:first-child { border-radius: 5px 0 0 5px; }
+.band > i:last-child  { border-radius: 0 5px 5px 0; }
+
+.legende { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.legenden-zeile { display: flex; align-items: center; gap: 9px; }
+.legenden-zeile .punkt { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; }
+.legenden-zeile .name { flex: 1; color: var(--text-leise); }
+.legenden-zeile .wert { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.quote {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 13px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--linie); color: var(--text-leise);
+}
+.quote b { color: var(--text); font-variant-numeric: tabular-nums; font-size: 15px; }
+
+.posten-zeile {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; font-size: 14.5px; padding: 8px 0;
+  text-align: left;
+}
+.posten-zeile + .posten-zeile { border-top: 1px solid var(--linie); }
+.posten-zeile .wert { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.posten-zeile small { font-size: 11.5px; }
+.posten-zeile small.gut { color: var(--plus); }
+
+.rechnung-zeile {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 14px; padding: 5px 0; color: var(--text-leise);
+}
+.rechnung-zeile .wert { font-variant-numeric: tabular-nums; color: var(--text); }
+.rechnung-zeile.summe {
+  border-top: 1px solid var(--linie); margin-top: 6px; padding-top: 11px;
+  font-weight: 700; color: var(--text); font-size: 15px;
+}
+
+.listen-knopf {
+  display: flex; align-items: center; gap: 13px;
+  background: var(--karte); border-radius: 14px;
+  padding: 14px 16px; width: 100%;
+  text-align: left; margin-bottom: 10px;
+}
+.listen-knopf:active { background: var(--karte-hell); }
+.listen-knopf .sym { font-size: 19px; }
+.listen-knopf .txt { flex: 1; font-size: 15px; }
+.listen-knopf .txt small {
+  display: block; color: var(--text-sehrleise); font-size: 12px; margin-top: 1px;
+}
+.listen-knopf .chevron { color: var(--text-sehrleise); font-size: 18px; }
+
+/* Kopfzeile mit Zurück und Plus */
+.kopf-reihe {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.zurueck { font-size: 15px; color: var(--akzent); padding: 2px 0; }
+.kopf-plus {
+  width: 34px; height: 34px; border-radius: 11px;
+  background: var(--karte); color: var(--akzent);
+  font-size: 22px; font-weight: 300;
+  display: flex; align-items: center; justify-content: center;
+}
+.kopf-plus:active { background: var(--karte-hell); }
+
+.gut { color: var(--plus); }
+.warn { color: var(--warn); }

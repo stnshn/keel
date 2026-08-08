@@ -5,7 +5,7 @@
  * Sonst zeigt das iPhone weiter die alte, zwischengespeicherte Version an.
  */
 
-const CACHE_VERSION = 'keel-v3';
+const CACHE_VERSION = 'keel-v4';
 
 const DATEIEN = [
   './',
@@ -13,6 +13,7 @@ const DATEIEN = [
   './styles.css',
   './csv.js',
   './phase2.js',
+  './start.js',
   './app.js',
   './manifest.json',
   './icons/icon-192.png',
@@ -22,10 +23,21 @@ const DATEIEN = [
 ];
 
 // Beim Installieren: alle App-Dateien in den Cache legen.
+//
+// Bewusst Datei fuer Datei statt cache.addAll(): addAll bricht komplett
+// ab, sobald eine einzige Datei nicht ankommt. Bei wackeligem Netz waere
+// die App dann gar nicht offline verfuegbar. So wird gespeichert, was
+// geht - der Rest landet beim ersten Aufruf im Cache.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(DATEIEN))
+      .then((cache) => Promise.all(
+        DATEIEN.map((datei) =>
+          cache.add(datei).catch((fehler) => {
+            console.warn('Keel: konnte nicht vorgeladen werden:', datei, fehler);
+          })
+        )
+      ))
       .then(() => self.skipWaiting())
   );
 });
