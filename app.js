@@ -46,6 +46,12 @@ const STANDARD_KATEGORIEN = [
   { id: 'umbuchung', name: 'Umbuchung', emoji: '🔄', typ: 'neutral', ausBilanz: true, system: true }
 ];
 
+/* Harte Obergrenze fuer aktive Ausgabe-Kategorien.
+   Einnahme-Kategorien und die System-Kategorie "Umbuchung" zaehlen bewusst
+   nicht mit: Einnahmen kosten bei der Erfassung keine Entscheidung, und die
+   Umbuchung ist keine Wahl, sondern ein Sonderfall. */
+const KAT_GRENZE = 12;
+
 const EMOJI_AUSWAHL = [
   '🛒','🍽️','☕','⛽','🚗','🚌','🏠','💡','💧','📶','📱','💻','📺','🎮',
   '🛡️','💊','🏥','🏋️','⚽','🛍️','👕','👟','✈️','🏖️','🎬','🎵','📚','🎓',
@@ -60,13 +66,13 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 4,
+      version: 5,
       erstellt: new Date().toISOString(),
       buchungen: [],
       // Tage, an denen bewusst nichts ausgegeben wurde (ISO-Datum, z. B.
       // "2026-08-14"). Nur dafuer da, den Erfassungs-Zaehler zu fuettern.
       nullTage: [],
-      kategorien: STANDARD_KATEGORIEN.map((k) => Object.assign({}, k)),
+      kategorien: STANDARD_KATEGORIEN.map((k) => Object.assign({ archiviert: false }, k)),
       regeln: { exakt: {}, stamm: {} },
       fixkosten: [],
       budgets: {},
@@ -79,7 +85,14 @@ const Speicher = {
         mindestnettoCent: 0,
         sparrateCent: 0,
         gehaltVerschieben: true,
-        hinweisTag: ''
+        hinweisTag: '',
+        // Zeitpunkt des letzten erfolgreichen Sicherns (ISO). Leer heisst:
+        // es gab noch keines.
+        letztesBackup: '',
+        // Tag, an dem das Erinnerungsband weggetippt wurde.
+        backupBandTag: '',
+        // Der einmalige Hinweis, wenn mehr als KAT_GRENZE Kategorien aktiv sind.
+        katHinweisGezeigt: false
       }
     };
   },
@@ -161,12 +174,23 @@ const Speicher = {
     // damit er hoechstens einmal taeglich erscheint.
     if (typeof e.hinweisTag !== 'string') e.hinweisTag = '';
 
-    d.version = 4;
+    // --- Erweiterung auf Version 5 (Kategorie-Obergrenze, Backup-Absicherung) ---
+    // Kategorien werden ab hier archiviert statt geloescht. Aeltere Staende
+    // und Backups kennen das Feld nicht - dort gilt alles als aktiv.
+    if (typeof e.letztesBackup    !== 'string')  e.letztesBackup = '';
+    if (typeof e.backupBandTag    !== 'string')  e.backupBandTag = '';
+    if (typeof e.katHinweisGezeigt !== 'boolean') e.katHinweisGezeigt = false;
+
+    d.version = 5;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
       d.kategorien.push(Object.assign({}, STANDARD_KATEGORIEN[STANDARD_KATEGORIEN.length - 1]));
     }
+
+    // Nach dem Nachziehen der System-Kategorie, damit auch sie das Feld hat.
+    // System-Kategorien lassen sich grundsaetzlich nicht archivieren.
+    d.kategorien.forEach((k) => { k.archiviert = k.system ? false : k.archiviert === true; });
 
     d.buchungen = d.buchungen.filter((b) => b && b.id && b.datum && typeof b.betragCent === 'number');
     return d;
@@ -264,8 +288,31 @@ function kategorie(id) {
   return Daten.kategorien.find((k) => k.id === id) || null;
 }
 
+// Nur aktive Kategorien. Archivierte verschwinden aus der Erfassung und aus
+// allen Vorschlaegen - bei alten Buchungen bleiben sie als Bezeichnung stehen,
+// weil "kategorie(id)" weiterhin jede Kategorie findet.
 function kategorienNach(typ) {
-  return Daten.kategorien.filter((k) => k.typ === typ);
+  return Daten.kategorien.filter((k) => k.typ === typ && !k.archiviert);
+}
+
+// Die Kategorien, die gegen die Obergrenze zaehlen.
+function aktiveAusgabeKategorien() {
+  return Daten.kategorien.filter((k) => k.typ === 'ausgabe' && !k.archiviert && !k.system);
+}
+
+function katGrenzeErreicht() {
+  return aktiveAusgabeKategorien().length >= KAT_GRENZE;
+}
+
+// Wie oft wurde jede Kategorie bisher benutzt?
+function nutzungProKategorie() {
+  const n = {};
+  Daten.buchungen.forEach((b) => { n[b.kategorieId] = (n[b.kategorieId] || 0) + 1; });
+  return n;
+}
+
+function buchungenText(n) {
+  return n === 1 ? '1 Buchung' : n + ' Buchungen';
 }
 
 // Die Kategorie-Balken zeigen EINE Groesse: Ausgaben. Also bekommen sie
@@ -370,8 +417,11 @@ const Regeln = {
 
 // Kategorie-Vorschlag fuer eine importierte Zeile.
 function vorschlagKategorie(v) {
+  // Auch eine gelernte Zuordnung zaehlt nicht mehr, wenn ihre Kategorie
+  // archiviert wurde - sonst kaeme sie durch die Hintertuer zurueck.
   const gelernt = Regeln.finde(v.normHaendler, v.stamm);
-  if (gelernt && kategorie(gelernt.kategorieId)) {
+  const gelernteKat = gelernt ? kategorie(gelernt.kategorieId) : null;
+  if (gelernteKat && !gelernteKat.archiviert) {
     return { kategorieId: gelernt.kategorieId, quelle: 'gelernt' };
   }
 
@@ -381,7 +431,7 @@ function vorschlagKategorie(v) {
   // Nur Kategorien vorschlagen, die zur Buchungsart passen.
   const passt = (id) => {
     const k = kategorie(id);
-    return k && (k.typ === v.art || k.typ === 'neutral') ? id : null;
+    return k && !k.archiviert && (k.typ === v.art || k.typ === 'neutral') ? id : null;
   };
 
   // Bekannter Anbietername schlaegt den Branchenschluessel,
@@ -401,7 +451,11 @@ function vorschlagKategorie(v) {
   }
 
   const rueckfall = v.art === 'ausgabe' ? 'sonstiges' : 'sonstigeeinnahme';
-  return { kategorieId: kategorie(rueckfall) ? rueckfall : (kategorienNach(v.art)[0] || {}).id, quelle: 'rueckfall' };
+  const rk = kategorie(rueckfall);
+  return {
+    kategorieId: rk && !rk.archiviert ? rueckfall : (kategorienNach(v.art)[0] || {}).id,
+    quelle: 'rueckfall'
+  };
 }
 
 /* ============================================================
@@ -703,7 +757,8 @@ const UI = {
 
   mehr: function () {
     const anzahl = Daten.buchungen.length;
-    const anzahlKat = Daten.kategorien.length;
+    const anzahlKat = aktiveAusgabeKategorien().length;
+    const anzahlArchiv = Daten.kategorien.filter((k) => k.archiviert).length;
     const anzahlRegeln = Regeln.anzahl();
 
     return '<div class="kopf"><h1>Mehr</h1>' +
@@ -779,7 +834,8 @@ const UI = {
           '<button class="listenzeile" data-tu="kategorien">' +
             '<span class="icon">🏷️</span>' +
             '<span class="mitte"><span class="haupt">Kategorien</span>' +
-            '<span class="neben">' + anzahlKat + ' angelegt</span></span>' +
+            '<span class="neben">' + anzahlKat + ' für Ausgaben · Grenze ' + KAT_GRENZE +
+              (anzahlArchiv ? ' · ' + anzahlArchiv + ' im Archiv' : '') + '</span></span>' +
             '<span class="chevron">›</span></button>' +
           '<button class="listenzeile" data-tu="regeln">' +
             '<span class="icon">🧠</span>' +
@@ -793,7 +849,14 @@ const UI = {
           '<button class="listenzeile" data-tu="export">' +
             '<span class="icon">💾</span>' +
             '<span class="mitte"><span class="haupt">Daten sichern</span>' +
-            '<span class="neben">Als JSON-Datei herunterladen</span></span>' +
+            '<span class="neben">' + esc(Backup.standText()) + '</span></span>' +
+            (Backup.faellig() && Backup.etwasZuVerlieren()
+              ? '<span class="rechts warnpunkt">●</span>' : '') +
+            '<span class="chevron">›</span></button>' +
+          '<button class="listenzeile" data-tu="backup-pruefen">' +
+            '<span class="icon">🔍</span>' +
+            '<span class="mitte"><span class="haupt">Backup prüfen</span>' +
+            '<span class="neben">Testlauf: sichern, wieder einlesen, nachzählen</span></span>' +
             '<span class="chevron">›</span></button>' +
           '<button class="listenzeile" data-tu="import-json">' +
             '<span class="icon">♻️</span>' +
@@ -881,6 +944,9 @@ const Erfassung = {
       if (b.typ !== typ) return;
       const k = kategorie(b.kategorieId);
       if (!k || (k.typ !== typ && k.typ !== 'neutral')) return;
+      // Archivierte Kategorien werden uebersprungen - dann greift eben die
+      // zuletzt benutzte, die noch aktiv ist.
+      if (k.archiviert) return;
       const neuer = !treffer ||
         b.datum > treffer.datum ||
         (b.datum === treffer.datum && (b.erstellt || 0) > (treffer.erstellt || 0));
@@ -891,7 +957,8 @@ const Erfassung = {
 
     // Noch nichts erfasst: die erste passende Kategorie nehmen, damit auch
     // beim allerersten Mal nur der Betrag Pflicht ist.
-    const erste = Daten.kategorien.filter((k) => k.typ === typ || k.typ === 'neutral')[0];
+    const erste = Daten.kategorien.filter((k) =>
+      !k.archiviert && (k.typ === typ || k.typ === 'neutral'))[0];
     return erste ? erste.id : null;
   },
 
@@ -1014,12 +1081,14 @@ const Erfassung = {
       anzeige.textContent = (z.typ === 'ausgabe' ? '−' : '+') + geld(cent) + ' €';
     }
 
-    // Kategorien: haeufigste zuerst
-    const nutzung = {};
-    Daten.buchungen.forEach((b) => { nutzung[b.kategorieId] = (nutzung[b.kategorieId] || 0) + 1; });
+    // Kategorien: haeufigste zuerst. Archivierte tauchen hier nicht mehr auf -
+    // ausser sie haengt noch an der Buchung, die gerade bearbeitet wird. Sonst
+    // wuerde die Bearbeitung die Kategorie stillschweigend umhaengen.
+    const nutzung = nutzungProKategorie();
 
     const liste = Daten.kategorien
-      .filter((k) => k.typ === z.typ || k.typ === 'neutral')
+      .filter((k) => (k.typ === z.typ || k.typ === 'neutral') &&
+                     (!k.archiviert || k.id === z.kategorieId))
       .sort((a, b) => {
         if (a.typ === 'neutral' && b.typ !== 'neutral') return 1;
         if (b.typ === 'neutral' && a.typ !== 'neutral') return -1;
@@ -1148,8 +1217,12 @@ const Kategorien = {
       titel: 'Kategorien',
       linksText: 'Fertig',
       rechtsText: 'Neu',
-      beiRechts: () => this.bearbeiten(null),
-      nachOeffnen: (koerper) => { this.zeichne(koerper); }
+      beiRechts: () => this.neu(),
+      nachOeffnen: (koerper) => {
+        this.zeichne(koerper);
+        // Erst zeichnen, dann den einmaligen Hinweis darueberlegen.
+        this.hinweisWennZuViele();
+      }
     });
   },
 
@@ -1157,18 +1230,23 @@ const Kategorien = {
     koerper = koerper || Blatt.koerper();
     if (!koerper) return;
 
-    const nutzung = {};
-    Daten.buchungen.forEach((b) => { nutzung[b.kategorieId] = (nutzung[b.kategorieId] || 0) + 1; });
+    // Die Zaehlung passiert hier - und "zeichne" laeuft bei jedem Oeffnen der
+    // Verwaltung, nicht nur beim allerersten Laden.
+    const aktiv = aktiveAusgabeKategorien().length;
+    const voll  = aktiv >= KAT_GRENZE;
+
+    const nutzung = nutzungProKategorie();
+    const archiv  = Daten.kategorien.filter((k) => k.archiviert);
 
     const gruppe = (typ, titel) => {
-      const liste = Daten.kategorien.filter((k) => k.typ === typ);
+      const liste = Daten.kategorien.filter((k) => k.typ === typ && !k.archiviert);
       if (!liste.length) return '';
       return '<p class="abschnitt-titel">' + titel + '</p><div class="liste">' +
         liste.map((k) =>
           '<button class="listenzeile" data-kat="' + esc(k.id) + '">' +
             '<span class="icon">' + esc(k.emoji) + '</span>' +
             '<span class="mitte"><span class="haupt">' + esc(k.name) + '</span>' +
-              '<span class="neben">' + (nutzung[k.id] || 0) + ' Buchungen' +
+              '<span class="neben">' + buchungenText(nutzung[k.id] || 0) +
               (k.system ? ' · zählt nicht in die Bilanz' : '') + '</span></span>' +
             '<span class="chevron">›</span>' +
           '</button>').join('') +
@@ -1176,21 +1254,254 @@ const Kategorien = {
     };
 
     koerper.innerHTML =
+      '<div class="kat-zaehler' + (voll ? ' voll' : '') + '">' +
+        '<b>' + aktiv + ' von ' + KAT_GRENZE + '</b> Ausgabe-Kategorien in Gebrauch' +
+        (aktiv > KAT_GRENZE ? '<small>Mehr als vorgesehen. Nichts wird von selbst ' +
+          'archiviert — du entscheidest.</small>' : '') +
+      '</div>' +
+
       gruppe('ausgabe', 'Ausgaben') +
       gruppe('einnahme', 'Einnahmen') +
       gruppe('neutral', 'Neutral') +
-      '<p class="hinweis">Beim Löschen einer Kategorie werden die zugehörigen Buchungen ' +
-      'nicht gelöscht, sondern nach „Sonstiges" verschoben.</p><div style="height:12px"></div>';
+
+      '<button class="knopf' + (voll ? ' gesperrt' : '') + '" id="k-neu">Kategorie anlegen</button>' +
+
+      (archiv.length
+        ? '<p class="abschnitt-titel">Archiv</p><div class="liste">' +
+            '<button class="listenzeile" id="k-archiv">' +
+              '<span class="icon">📦</span>' +
+              '<span class="mitte"><span class="haupt">Archivierte Kategorien</span>' +
+                '<span class="neben">' + archiv.length + ' abgelegt · ansehen und zurückholen</span></span>' +
+              '<span class="chevron">›</span>' +
+            '</button>' +
+          '</div>'
+        : '') +
+
+      '<p class="hinweis">Die Grenze gilt für Ausgabe-Kategorien. Einnahmen und ' +
+        '„Umbuchung" zählen nicht mit. Archivierte Kategorien verschwinden aus der ' +
+        'Erfassung, bleiben bei alten Buchungen aber stehen und tauchen in den ' +
+        'Auswertungen weiter auf.</p><div style="height:12px"></div>';
 
     koerper.querySelectorAll('[data-kat]').forEach((b) => {
       b.addEventListener('click', () => this.bearbeiten(b.dataset.kat));
     });
+    koerper.querySelector('#k-neu').addEventListener('click', () => this.neu());
+
+    const archivKnopf = koerper.querySelector('#k-archiv');
+    if (archivKnopf) archivKnopf.addEventListener('click', () => this.archiv());
+
+    // Der Knopf oben rechts im Blattkopf wird mitgedimmt - antippen laesst er
+    // sich weiterhin, dann kommt der Hinweis.
+    const rechts = Blatt.rechtsKnopf();
+    if (rechts) rechts.classList.toggle('gesperrt', voll);
   },
 
-  bearbeiten: function (katId) {
+  // Einziger Weg zu einer neuen Kategorie. Hier haengt die Grenze.
+  neu: function () {
+    if (katGrenzeErreicht()) { this.ersetzenBlatt(); return; }
+    this.bearbeiten(null);
+  },
+
+  /* Der Hinweis, wenn die Grenze erreicht ist. Er sagt nicht nur nein,
+     sondern zeigt gleich, was stattdessen weichen kann. */
+  ersetzenBlatt: function () {
+    const nutzung = nutzungProKategorie();
+    const liste = aktiveAusgabeKategorien()
+      .slice()
+      .sort((a, b) => (nutzung[a.id] || 0) - (nutzung[b.id] || 0));
+
+    Blatt.oeffnen({
+      titel: 'Grenze erreicht',
+      linksText: 'Abbrechen',
+      nachOeffnen: (koerper) => {
+        koerper.innerHTML =
+          '<p class="grenze-text">Du hast schon ' + KAT_GRENZE + ' Kategorien. ' +
+            'Mehr Kategorien bedeuten mehr Entscheidungen bei jeder Erfassung — ' +
+            'und dass du schneller aufhörst zu erfassen. Welche willst du ersetzen?</p>' +
+
+          '<div class="liste">' +
+            liste.map((k) =>
+              '<button class="listenzeile" data-ers="' + esc(k.id) + '">' +
+                '<span class="icon">' + esc(k.emoji) + '</span>' +
+                '<span class="mitte"><span class="haupt">' + esc(k.name) + '</span>' +
+                  '<span class="neben">' + buchungenText(nutzung[k.id] || 0) + '</span></span>' +
+                '<span class="rechts">archivieren</span>' +
+              '</button>').join('') +
+          '</div>' +
+
+          '<p class="hinweis">Am seltensten benutzt steht oben. Archivieren löscht ' +
+            'nichts: die Buchungen bleiben, die Kategorie taucht nur nicht mehr bei ' +
+            'der Erfassung auf. Zurückholen geht jederzeit.</p>' +
+
+          // Die Grenze gilt nur fuer Ausgaben. Ohne diesen Weg waere eine neue
+          // Einnahme-Kategorie ab jetzt gar nicht mehr moeglich.
+          '<button class="knopf rand" id="ers-einnahme">Stattdessen eine Einnahme-Kategorie</button>' +
+          '<div style="height:12px"></div>';
+
+        koerper.querySelector('#ers-einnahme').addEventListener('click', () => {
+          Blatt.schliessen();
+          this.bearbeiten(null, 'einnahme');
+        });
+
+        koerper.querySelectorAll('[data-ers]').forEach((b) => {
+          b.addEventListener('click', () => {
+            const k = kategorie(b.dataset.ers);
+            if (!k) return;
+            if (!confirm('„' + k.name + '" archivieren und stattdessen eine neue ' +
+                         'Kategorie anlegen?')) return;
+            this.archivieren(k.id);
+            Blatt.schliessen();      // das Hinweisblatt
+            this.zeichne();
+            this.bearbeiten(null);   // direkt weiter zur neuen Kategorie
+          });
+        });
+      }
+    });
+  },
+
+  /* Der einmalige Hinweis fuer alle, die schon mehr als die Grenze haben.
+     Er archiviert nichts von selbst, er zeigt nur die Nutzungshaeufigkeit
+     und schlaegt die seltenen vor. */
+  hinweisWennZuViele: function () {
+    if (Daten.einstellungen.katHinweisGezeigt) return;
+    if (aktiveAusgabeKategorien().length <= KAT_GRENZE) return;
+
+    Daten.einstellungen.katHinweisGezeigt = true;
+    sichern();
+
+    Blatt.oeffnen({
+      titel: 'Zu viele Kategorien',
+      linksText: 'Später',
+      nachOeffnen: (koerper) => {
+        const male = () => {
+          const nutzung = nutzungProKategorie();
+          const aktiv = aktiveAusgabeKategorien();
+          const zuViel = aktiv.length - KAT_GRENZE;
+          const liste = aktiv.slice()
+            .sort((a, b) => (nutzung[a.id] || 0) - (nutzung[b.id] || 0));
+
+          koerper.innerHTML =
+            '<p class="grenze-text">Keel arbeitet ab jetzt mit höchstens ' + KAT_GRENZE +
+              ' Ausgabe-Kategorien. Du hast <b>' + aktiv.length + '</b>. ' +
+              'Es wird nichts von selbst archiviert — hier steht nur, wie oft du jede ' +
+              'wirklich benutzt hast. Die selten genutzten oben sind die Kandidaten.</p>' +
+
+            (zuViel > 0
+              ? '<div class="kat-zaehler voll"><b>' + zuViel + '</b> zu viel</div>'
+              : '<div class="kat-zaehler"><b>Passt.</b> Jetzt sind es ' + aktiv.length +
+                ' von ' + KAT_GRENZE + '.</div>') +
+
+            '<div class="liste">' +
+              liste.map((k) =>
+                '<button class="listenzeile" data-hw="' + esc(k.id) + '">' +
+                  '<span class="icon">' + esc(k.emoji) + '</span>' +
+                  '<span class="mitte"><span class="haupt">' + esc(k.name) + '</span>' +
+                    '<span class="neben">' + buchungenText(nutzung[k.id] || 0) + '</span></span>' +
+                  '<span class="rechts">archivieren</span>' +
+                '</button>').join('') +
+            '</div>' +
+
+            '<button class="knopf" id="hw-fertig">Fertig</button>' +
+            '<p class="hinweis">Archivieren löscht nichts. Alte Buchungen behalten ihre ' +
+              'Bezeichnung, die Auswertungen bleiben vollständig.</p>' +
+            '<div style="height:12px"></div>';
+
+          koerper.querySelectorAll('[data-hw]').forEach((b) => {
+            b.addEventListener('click', () => {
+              const k = kategorie(b.dataset.hw);
+              if (!k) return;
+              if (!confirm('„' + k.name + '" archivieren?')) return;
+              this.archivieren(k.id);
+              male();
+            });
+          });
+          koerper.querySelector('#hw-fertig').addEventListener('click', () => Blatt.schliessen());
+        };
+
+        male();
+      },
+      beimSchliessen: () => { this.zeichne(); }
+    });
+  },
+
+  /* Der eigene Bereich fuer alles Archivierte. */
+  archiv: function () {
+    Blatt.oeffnen({
+      titel: 'Archiv',
+      linksText: 'Fertig',
+      nachOeffnen: (koerper) => {
+        const male = () => {
+          const nutzung = nutzungProKategorie();
+          const liste = Daten.kategorien.filter((k) => k.archiviert);
+          const frei = Math.max(0, KAT_GRENZE - aktiveAusgabeKategorien().length);
+
+          if (!liste.length) {
+            koerper.innerHTML = '<div class="leer-hinweis"><span class="gross">📦</span>' +
+              'Nichts archiviert.</div>';
+            return;
+          }
+
+          koerper.innerHTML =
+            '<div class="kat-zaehler' + (frei ? '' : ' voll') + '">' +
+              (frei
+                ? '<b>' + frei + '</b> Platz' + (frei === 1 ? '' : 'e') + ' frei'
+                : '<b>Kein Platz frei.</b><small>Erst eine aktive Ausgabe-Kategorie ' +
+                  'archivieren, dann geht das Zurückholen.</small>') +
+            '</div>' +
+
+            '<div class="liste">' +
+              liste.map((k) =>
+                '<button class="listenzeile" data-re="' + esc(k.id) + '">' +
+                  '<span class="icon">' + esc(k.emoji) + '</span>' +
+                  '<span class="mitte"><span class="haupt">' + esc(k.name) + '</span>' +
+                    '<span class="neben">' + buchungenText(nutzung[k.id] || 0) + ' · ' +
+                      (k.typ === 'einnahme' ? 'Einnahme' : 'Ausgabe') + '</span></span>' +
+                  '<span class="rechts">zurückholen</span>' +
+                '</button>').join('') +
+            '</div>' +
+
+            '<p class="hinweis">Die Buchungen dieser Kategorien sind unverändert da und ' +
+              'zählen weiter in allen Auswertungen mit.</p><div style="height:12px"></div>';
+
+          koerper.querySelectorAll('[data-re]').forEach((b) => {
+            b.addEventListener('click', () => { this.reaktivieren(b.dataset.re); male(); });
+          });
+        };
+
+        male();
+      },
+      beimSchliessen: () => { this.zeichne(); }
+    });
+  },
+
+  archivieren: function (katId) {
+    const k = kategorie(katId);
+    if (!k || k.system) return false;
+    k.archiviert = true;
+    sichern();
+    UI.zeichne();
+    return true;
+  },
+
+  // Zurueckholen gilt als "aktiv werden" - also greift die Grenze auch hier.
+  reaktivieren: function (katId) {
+    const k = kategorie(katId);
+    if (!k) return false;
+    if (k.typ === 'ausgabe' && katGrenzeErreicht()) {
+      UI.melde('Erst Platz schaffen: ' + KAT_GRENZE + ' Kategorien sind das Höchste', 'fehler');
+      return false;
+    }
+    k.archiviert = false;
+    sichern();
+    UI.zeichne();
+    UI.melde('„' + k.name + '" ist wieder dabei', 'gut');
+    return true;
+  },
+
+  bearbeiten: function (katId, artVorgabe) {
     const vorhanden = katId ? kategorie(katId) : null;
     const z = vorhanden ? Object.assign({}, vorhanden) :
-              { id: null, name: '', emoji: '🏷️', typ: 'ausgabe' };
+              { id: null, name: '', emoji: '🏷️', typ: artVorgabe || 'ausgabe' };
 
     Blatt.oeffnen({
       titel: vorhanden ? 'Kategorie bearbeiten' : 'Neue Kategorie',
@@ -1219,6 +1530,11 @@ const Kategorien = {
 
           '<button class="knopf" id="k-speichern">Speichern</button>' +
 
+          // Archivieren ist der sanfte Weg: nichts geht verloren, die Kategorie
+          // tritt nur ab. Deshalb steht sie vor dem Loeschen.
+          (vorhanden && !vorhanden.system && !vorhanden.archiviert ?
+            '<button class="knopf zweit" id="k-archivieren">Kategorie archivieren</button>' : '') +
+
           (vorhanden && !vorhanden.system ?
             '<button class="knopf gefahr" id="k-loeschen">Kategorie löschen</button>' : '') +
 
@@ -1237,6 +1553,24 @@ const Kategorien = {
           b.addEventListener('click', () => { z.emoji = b.dataset.emoji; male(); }));
         koerper.querySelector('#k-name').addEventListener('input', (e) => { z.name = e.target.value; });
         koerper.querySelector('#k-speichern').addEventListener('click', () => speichern());
+
+        const archivieren = koerper.querySelector('#k-archivieren');
+        if (archivieren) {
+          archivieren.addEventListener('click', () => {
+            const anzahl = Daten.buchungen.filter((b) => b.kategorieId === z.id).length;
+            if (!confirm('„' + z.name + '" archivieren?\n\n' +
+                         'Sie verschwindet aus der Erfassung. ' +
+                         (anzahl ? (anzahl === 1
+                                      ? 'Die vorhandene Buchung bleibt unverändert und zählt weiter mit.'
+                                      : 'Die ' + anzahl + ' vorhandenen Buchungen bleiben ' +
+                                        'unverändert und zählen weiter mit.')
+                                 : 'Zurückholen geht jederzeit.'))) return;
+            Kategorien.archivieren(z.id);
+            Blatt.schliessen();
+            Kategorien.zeichne();
+            UI.melde('Archiviert');
+          });
+        }
 
         const loeschen = koerper.querySelector('#k-loeschen');
         if (loeschen) {
@@ -1275,9 +1609,23 @@ const Kategorien = {
       const name = String(z.name || '').trim();
       if (!name) { UI.melde('Bitte einen Namen eingeben', 'fehler'); return; }
 
-      const doppelt = Daten.kategorien.some((k) =>
+      const doppelt = Daten.kategorien.find((k) =>
         k.id !== z.id && k.name.toLowerCase() === name.toLowerCase());
-      if (doppelt) { UI.melde('Diese Kategorie gibt es schon', 'fehler'); return; }
+      if (doppelt) {
+        UI.melde(doppelt.archiviert
+          ? 'Diese Kategorie liegt im Archiv'
+          : 'Diese Kategorie gibt es schon', 'fehler');
+        return;
+      }
+
+      // Zweite Sperre hinter dem Knopf: auch beim Umschalten einer
+      // Einnahme- auf eine Ausgabe-Kategorie darf die Grenze nicht kippen.
+      const wirdAusgabe = z.typ === 'ausgabe' &&
+        !(vorhanden && vorhanden.typ === 'ausgabe' && !vorhanden.archiviert);
+      if (wirdAusgabe && katGrenzeErreicht()) {
+        UI.melde('Schon ' + KAT_GRENZE + ' Ausgabe-Kategorien — erst eine archivieren', 'fehler');
+        return;
+      }
 
       if (z.id) {
         const k = kategorie(z.id);
@@ -1286,7 +1634,8 @@ const Kategorien = {
         if (!k.system) k.typ = z.typ;
       } else {
         Daten.kategorien.push({
-          id: neueId('k'), name: name, emoji: z.emoji, typ: z.typ, ausBilanz: false, system: false
+          id: neueId('k'), name: name, emoji: z.emoji, typ: z.typ,
+          ausBilanz: false, system: false, archiviert: false
         });
       }
       sichern();
@@ -1297,9 +1646,11 @@ const Kategorien = {
     }
   },
 
-  // Kleiner Auswahl-Dialog, den der Import benutzt.
+  // Kleiner Auswahl-Dialog, den der Import benutzt. Archivierte stehen nicht
+  // zur Wahl - ausser eine Zeile haengt bereits an einer.
   waehlen: function (art, aktuell, beiWahl) {
-    const liste = Daten.kategorien.filter((k) => k.typ === art || k.typ === 'neutral');
+    const liste = Daten.kategorien.filter((k) =>
+      (k.typ === art || k.typ === 'neutral') && (!k.archiviert || k.id === aktuell));
     Blatt.oeffnen({
       titel: 'Kategorie wählen',
       linksText: 'Abbrechen',
@@ -1751,7 +2102,171 @@ const Import = {
    11. Backup - Export und Import
    ============================================================ */
 
+/* Wie lange darf das letzte Sichern her sein, bis Keel daran erinnert? */
+const BACKUP_TAGE = 7;
+
 const Backup = {
+
+  /* ---------- Erinnerung ---------- */
+
+  // Nach jedem erfolgreichen Sichern. Der Zeitstempel wird bewusst erst
+  // danach gesetzt: die Datei selbst traegt noch den vorherigen Stand,
+  // und genau das stimmt auch.
+  stempeln: function () {
+    Daten.einstellungen.letztesBackup = new Date().toISOString();
+    sichern();
+    UI.zeichne();
+  },
+
+  // Tage seit dem letzten Sichern. null heisst: es gab noch keines.
+  tageSeit: function () {
+    const iso = Daten.einstellungen.letztesBackup;
+    if (!iso) return null;
+    const dann = new Date(iso).getTime();
+    if (!dann || isNaN(dann)) return null;
+    return Math.floor((Date.now() - dann) / 86400000);
+  },
+
+  // Faellig, wenn noch nie gesichert wurde oder das letzte Mal zu lange her ist.
+  faellig: function () {
+    const tage = this.tageSeit();
+    return tage === null || tage > BACKUP_TAGE;
+  },
+
+  // Ist ueberhaupt etwas da, das verloren gehen koennte?
+  etwasZuVerlieren: function () {
+    return Daten.buchungen.length > 0 ||
+           (Daten.vermoegen || []).length > 0 ||
+           (Daten.fixkosten || []).length > 0;
+  },
+
+  /* Fuer die Startseite: faellig, heute noch nicht weggetippt - und es gibt
+     etwas zu sichern. Eine frisch eingerichtete, leere App zu mahnen waere
+     genau das Gegenteil von unaufdringlich. */
+  bandZeigen: function () {
+    return this.faellig() &&
+           this.etwasZuVerlieren() &&
+           Daten.einstellungen.backupBandTag !== heuteISO();
+  },
+
+  bandWeg: function () {
+    Daten.einstellungen.backupBandTag = heuteISO();
+    sichern();
+    UI.zeichne();
+  },
+
+  // Klartext fuer die Zeile unter "Daten sichern".
+  standText: function () {
+    const tage = this.tageSeit();
+    if (tage === null) return 'noch nie gesichert';
+    if (tage <= 0) return 'zuletzt heute gesichert';
+    if (tage === 1) return 'zuletzt gestern gesichert';
+    return 'zuletzt vor ' + tage + ' Tagen gesichert';
+  },
+
+  /* ---------- Wiederherstellungs-Test ---------- */
+
+  /* Erzeugt intern ein Backup, liest es sofort wieder ein und vergleicht.
+     Der echte Datensatz wird dabei nicht angefasst: gerechnet wird
+     ausschliesslich auf dem, was aus dem Text zurueckkommt. */
+  pruefung: function () {
+    const zaehle = (d) => ({
+      anzahl: (d.buchungen || []).length,
+      summe:  (d.buchungen || []).reduce((s, b) => s + (Number(b.betragCent) || 0), 0)
+    });
+
+    const vorher = zaehle(Daten);
+
+    let text;
+    try { text = this.inhalt(); }
+    catch (e) { return { ok: false, grund: 'Das Backup ließ sich nicht erzeugen.', vorher: vorher }; }
+
+    let roh;
+    try { roh = JSON.parse(text); }
+    catch (e) { return { ok: false, grund: 'Das erzeugte Backup ist nicht lesbar.', vorher: vorher }; }
+
+    const rein = roh && roh.daten ? roh.daten : roh;
+    if (!rein || !Array.isArray(rein.buchungen)) {
+      return { ok: false, grund: 'Im Backup fehlen die Buchungen.', vorher: vorher };
+    }
+
+    // Der gleiche Weg, den auch das echte Einspielen nimmt. "reparieren"
+    // arbeitet auf dem frisch geparsten Objekt, nicht auf "Daten".
+    const wieder = Speicher.reparieren(rein);
+    const nachher = zaehle(wieder);
+
+    return {
+      ok: nachher.anzahl === vorher.anzahl && nachher.summe === vorher.summe,
+      vorher: vorher,
+      nachher: nachher,
+      groesse: text.length
+    };
+  },
+
+  pruefen: function () {
+    const e = this.pruefung();
+
+    Blatt.oeffnen({
+      titel: 'Backup prüfen',
+      linksText: 'Fertig',
+      nachOeffnen: (koerper) => {
+        const diffAnzahl = e.nachher ? e.nachher.anzahl - e.vorher.anzahl : 0;
+        const diffSumme  = e.nachher ? e.nachher.summe  - e.vorher.summe  : 0;
+
+        koerper.innerHTML =
+          '<div class="karte pruef-karte ' + (e.ok ? 'gut' : 'schlecht') + '">' +
+            '<div class="pruef-symbol">' + (e.ok ? '✓' : '⚠️') + '</div>' +
+            '<div class="pruef-wort">' +
+              (e.ok ? 'Backup ist wiederherstellbar' : 'Achtung: Abweichung') +
+            '</div>' +
+            '<div class="pruef-unter">' +
+              (e.ok
+                ? 'Ein Backup wurde erzeugt, sofort wieder eingelesen und Stück für ' +
+                  'Stück nachgezählt. Alles stimmt überein.'
+                : (e.grund || 'Das eingelesene Backup deckt sich nicht mit deinen Daten.')) +
+            '</div>' +
+          '</div>' +
+
+          (e.nachher
+            ? '<div class="liste">' +
+                '<div class="listenzeile"><span class="icon">🧾</span>' +
+                  '<span class="mitte"><span class="haupt">Buchungen</span>' +
+                    '<span class="neben">jetzt ' + e.vorher.anzahl +
+                      ' · im Backup ' + e.nachher.anzahl +
+                      (diffAnzahl ? ' · ' + (diffAnzahl > 0 ? '+' : '−') +
+                        Math.abs(diffAnzahl) + ' Abweichung' : '') + '</span></span>' +
+                  '<span class="rechts">' + (diffAnzahl ? '⚠️' : '✓') + '</span></div>' +
+                '<div class="listenzeile"><span class="icon">∑</span>' +
+                  '<span class="mitte"><span class="haupt">Summe aller Beträge</span>' +
+                    '<span class="neben">jetzt ' + geldE(e.vorher.summe) +
+                      ' · im Backup ' + geldE(e.nachher.summe) +
+                      (diffSumme ? ' · ' + geldE(Math.abs(diffSumme)) + ' Abweichung' : '') +
+                    '</span></span>' +
+                  '<span class="rechts">' + (diffSumme ? '⚠️' : '✓') + '</span></div>' +
+                '<div class="listenzeile"><span class="icon">💾</span>' +
+                  '<span class="mitte"><span class="haupt">Umfang der Datei</span>' +
+                    '<span class="neben">rund ' + Math.max(1, Math.round(e.groesse / 1024)) +
+                      ' KB</span></span></div>' +
+              '</div>'
+            : '') +
+
+          '<p class="hinweis">Dieser Test hat deine Daten nicht angefasst und nichts ' +
+            'gespeichert. Er beweist, dass aus einer Sicherung derselbe Stand ' +
+            'zurückkommt — nicht, dass die Datei sicher liegt. Dafür bewahre sie ' +
+            'außerhalb des iPhones auf.</p>' +
+
+          (e.ok ? '<button class="knopf" id="p-sichern">Jetzt richtig sichern</button>' : '') +
+          '<div style="height:20px"></div>';
+
+        const knopf = koerper.querySelector('#p-sichern');
+        if (knopf) {
+          knopf.addEventListener('click', () => { Blatt.schliessen(); this.exportieren(); });
+        }
+      }
+    });
+  },
+
+  /* ---------- Export und Import ---------- */
 
   dateiname: function () {
     const d = new Date();
@@ -1803,6 +2318,7 @@ const Backup = {
           document.body.appendChild(a);
           a.click();
           setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
+          this.stempeln();
           UI.melde('Backup erstellt', 'gut');
         });
 
@@ -1816,6 +2332,9 @@ const Backup = {
               } else {
                 await navigator.share({ title: 'Keel Backup', text: text });
               }
+              // Erst wenn das Teilen durchgelaufen ist - ein Abbruch landet
+              // im catch und zaehlt zu Recht nicht als Sicherung.
+              this.stempeln();
             } catch (e) { /* Nutzer hat abgebrochen */ }
           });
         } else {
@@ -1825,6 +2344,7 @@ const Backup = {
         koerper.querySelector('#b-kopieren').addEventListener('click', async () => {
           try {
             await navigator.clipboard.writeText(text);
+            this.stempeln();
             UI.melde('In die Zwischenablage kopiert', 'gut');
           } catch (e) {
             UI.melde('Kopieren nicht möglich', 'fehler');
@@ -1990,6 +2510,8 @@ function starten() {
       else if (was.indexOf('zeitraum') === 0) { /* siehe unten */ }
       else if (was === 'export') Backup.exportieren();
       else if (was === 'import-json') Backup.importieren();
+      else if (was === 'backup-pruefen') Backup.pruefen();
+      else if (was === 'backup-band-weg') Backup.bandWeg();
       else if (was === 'alles-loeschen') Backup.allesLoeschen();
       return;
     }

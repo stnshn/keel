@@ -233,6 +233,7 @@ const Start = {
         '</div>' +
 
         this.zweiterTagHinweis() +
+        this.backupBand() +
         this.notgroschenKarte() +
         this.sparzielKarte() +
         this.kategorienKarte() +
@@ -279,6 +280,28 @@ const Start = {
     return '<div class="karte hinweis-leise">' +
       'Zweiter Tag ohne Eintrag — kurz was erfassen?' +
     '</div>';
+  },
+
+  /* Das Erinnerungsband. Es steht zwischen den Karten, nicht über der
+     großen Zahl - es soll nicht das Erste sein, was ins Auge fällt.
+     Ein Antippen führt direkt zur Sicherung, das ✕ legt es für heute weg. */
+  backupBand: function () {
+    if (typeof Backup === 'undefined' || !Backup.bandZeigen()) return '';
+
+    const tage = Backup.tageSeit();
+    const unter = tage === null
+      ? 'Deine Daten liegen nur auf diesem iPhone.'
+      : 'Das letzte ist ' + tage + ' Tage her.';
+
+    return '<div class="backup-band">' +
+        '<button class="bb-haupt" data-tu="export">' +
+          '<span class="bb-symbol">💾</span>' +
+          '<span class="bb-text"><b>Zeit für ein Backup</b>' +
+            '<small>' + esc(unter) + '</small></span>' +
+          '<span class="chevron">›</span>' +
+        '</button>' +
+        '<button class="bb-zu" data-tu="backup-band-weg" aria-label="Für heute ausblenden">✕</button>' +
+      '</div>';
   },
 
   nichtsEingerichtet: function () {
