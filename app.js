@@ -60,9 +60,12 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 3,
+      version: 4,
       erstellt: new Date().toISOString(),
       buchungen: [],
+      // Tage, an denen bewusst nichts ausgegeben wurde (ISO-Datum, z. B.
+      // "2026-08-14"). Nur dafuer da, den Erfassungs-Zaehler zu fuettern.
+      nullTage: [],
       kategorien: STANDARD_KATEGORIEN.map((k) => Object.assign({}, k)),
       regeln: { exakt: {}, stamm: {} },
       fixkosten: [],
@@ -75,7 +78,8 @@ const Speicher = {
         name: '',
         mindestnettoCent: 0,
         sparrateCent: 0,
-        gehaltVerschieben: true
+        gehaltVerschieben: true,
+        hinweisTag: ''
       }
     };
   },
@@ -143,7 +147,21 @@ const Speicher = {
     e.sparrateCent     = Number(e.sparrateCent) || 0;
     if (typeof e.gehaltVerschieben !== 'boolean') e.gehaltVerschieben = true;
 
-    d.version = 3;
+    // --- Erweiterung auf Version 4 (Erfassungs-Zaehler) ---
+    // Aeltere Staende kennen die Nulltage nicht. Der Zaehler selbst wird
+    // nirgends gespeichert, er ergibt sich jedes Mal neu aus Buchungen und
+    // dieser Liste - deshalb bleibt er auch in einem Backup nachvollziehbar.
+    d.nullTage = Array.isArray(d.nullTage) ? d.nullTage : [];
+    d.nullTage = d.nullTage
+      .filter((t) => typeof t === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t))
+      .filter((t, i, a) => a.indexOf(t) === i)
+      .sort();
+
+    // Merkt sich, an welchem Tag der leise Hinweis zuletzt gezeigt wurde,
+    // damit er hoechstens einmal taeglich erscheint.
+    if (typeof e.hinweisTag !== 'string') e.hinweisTag = '';
+
+    d.version = 4;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
@@ -821,18 +839,20 @@ const Erfassung = {
       notiz: vorhanden.notiz || '',
       wiederkehrend: !!vorhanden.wiederkehrend,
       normHaendler: vorhanden.normHaendler || '',
-      stamm: vorhanden.stamm || ''
+      stamm: vorhanden.stamm || '',
+      katVorbelegt: false
     } : {
       bearbeiten: null,
-      typ: 'ausgabe',
+      typ: 'ausgabe',              // Ausgabe ist immer vorausgewaehlt
       centText: '',
-      kategorieId: null,
-      datum: heuteISO(),
+      kategorieId: this.letzteKategorie('ausgabe'),
+      datum: heuteISO(),           // immer heute
       haendler: '',
       notiz: '',
       wiederkehrend: false,
       normHaendler: '',
-      stamm: ''
+      stamm: '',
+      katVorbelegt: true
     };
 
     Blatt.oeffnen({
@@ -844,8 +864,35 @@ const Erfassung = {
         koerper.innerHTML = this.koerperHtml();
         this.verdrahten(koerper);
         this.aktualisiere();
+        // Ziffernblock sofort im Blick - kein Feld zieht den Fokus an sich,
+        // die erste Ziffer kann direkt getippt werden.
+        koerper.scrollTop = 0;
       }
     });
+  },
+
+  /* Die zuletzt benutzte Kategorie dieser Art.
+     Wird aus den vorhandenen Buchungen gelesen - es wird nichts zusaetzlich
+     gespeichert, die Datenstruktur bleibt unveraendert. */
+  letzteKategorie: function (typ) {
+    let treffer = null;
+
+    Daten.buchungen.forEach((b) => {
+      if (b.typ !== typ) return;
+      const k = kategorie(b.kategorieId);
+      if (!k || (k.typ !== typ && k.typ !== 'neutral')) return;
+      const neuer = !treffer ||
+        b.datum > treffer.datum ||
+        (b.datum === treffer.datum && (b.erstellt || 0) > (treffer.erstellt || 0));
+      if (neuer) treffer = b;
+    });
+
+    if (treffer) return treffer.kategorieId;
+
+    // Noch nichts erfasst: die erste passende Kategorie nehmen, damit auch
+    // beim allerersten Mal nur der Betrag Pflicht ist.
+    const erste = Daten.kategorien.filter((k) => k.typ === typ || k.typ === 'neutral')[0];
+    return erste ? erste.id : null;
   },
 
   koerperHtml: function () {
@@ -898,7 +945,8 @@ const Erfassung = {
     koerper.querySelectorAll('[data-typ]').forEach((b) => {
       b.addEventListener('click', () => {
         z.typ = b.dataset.typ;
-        z.kategorieId = null;
+        z.kategorieId = this.letzteKategorie(z.typ);
+        z.katVorbelegt = true;
         this.aktualisiere();
       });
     });
@@ -958,7 +1006,8 @@ const Erfassung = {
     // Betrag
     const anzeige = koerper.querySelector('#betrag-anzeige');
     const cent = parseInt(z.centText || '0', 10);
-    anzeige.className = 'betrag-anzeige ' + (z.typ === 'ausgabe' ? 'aus' : 'ein');
+    anzeige.className = 'betrag-anzeige ' + (z.typ === 'ausgabe' ? 'aus' : 'ein') +
+      (z.centText ? '' : ' leer');
     if (!z.centText) {
       anzeige.innerHTML = '<span class="grau">0,00 €</span>';
     } else {
@@ -977,9 +1026,18 @@ const Erfassung = {
         return (nutzung[b.id] || 0) - (nutzung[a.id] || 0);
       });
 
+    // Die automatisch vorbelegte Kategorie nach vorn holen, damit sie ohne
+    // Scrollen zu sehen ist.
+    if (z.katVorbelegt && z.kategorieId) {
+      const pos = liste.findIndex((k) => k.id === z.kategorieId);
+      if (pos > 0) liste.unshift(liste.splice(pos, 1)[0]);
+    }
+
     const gitter = koerper.querySelector('#kat-gitter');
     gitter.innerHTML = liste.map((k) =>
-      '<button class="kat-kachel' + (k.id === z.kategorieId ? ' an' : '') + '" data-kat="' + esc(k.id) + '">' +
+      '<button class="kat-kachel' + (k.id === z.kategorieId ? ' an' : '') +
+        (z.katVorbelegt && k.id === z.kategorieId ? ' vorbelegt' : '') +
+        '" data-kat="' + esc(k.id) + '">' +
         '<span class="emoji">' + esc(k.emoji) + '</span>' +
         '<span class="name">' + esc(k.name) + '</span>' +
       '</button>'
@@ -988,6 +1046,7 @@ const Erfassung = {
     gitter.querySelectorAll('[data-kat]').forEach((b) => {
       b.addEventListener('click', () => {
         z.kategorieId = b.dataset.kat;
+        z.katVorbelegt = false;
         this.aktualisiere();
       });
     });
@@ -1008,8 +1067,9 @@ const Erfassung = {
       block.innerHTML = '';
     }
 
-    // Sichern-Knopf aktiv?
-    const bereit = cent > 0 && !!z.kategorieId;
+    // Sichern-Knopf aktiv? Pflicht ist nur der Betrag - Bezeichnung und
+    // Notiz duerfen leer bleiben, die Kategorie ist vorbelegt.
+    const bereit = cent > 0;
     const rechts = Blatt.rechtsKnopf();
     if (rechts) rechts.disabled = !bereit;
     const knopf = koerper.querySelector('#knopf-speichern');
@@ -1020,8 +1080,12 @@ const Erfassung = {
     const z = this.zustand;
     const cent = parseInt(z.centText || '0', 10);
 
-    if (cent <= 0)      { UI.melde('Bitte einen Betrag eingeben', 'fehler'); return; }
-    if (!z.kategorieId) { UI.melde('Bitte eine Kategorie wählen', 'fehler'); return; }
+    if (cent <= 0) { UI.melde('Bitte einen Betrag eingeben', 'fehler'); return; }
+
+    // Pflicht ist nur der Betrag. Wurde keine Kategorie angetippt, greift die
+    // zuletzt benutzte.
+    const katId = z.kategorieId || this.letzteKategorie(z.typ);
+    if (!katId) { UI.melde('Bitte eine Kategorie wählen', 'fehler'); return; }
 
     const haendler = z.haendler.trim();
 
@@ -1030,7 +1094,7 @@ const Erfassung = {
       if (b) {
         b.typ = z.typ;
         b.betragCent = cent;
-        b.kategorieId = z.kategorieId;
+        b.kategorieId = katId;
         b.datum = z.datum;
         b.haendler = haendler;
         b.notiz = z.notiz.trim();
@@ -1038,7 +1102,7 @@ const Erfassung = {
 
         // Wenn die Buchung aus einem Import stammt und die Kategorie geaendert
         // wurde: Regel nachziehen, damit es beim naechsten Mal stimmt.
-        if (b.normHaendler) Regeln.lerne(b.normHaendler, b.stamm, z.kategorieId);
+        if (b.normHaendler) Regeln.lerne(b.normHaendler, b.stamm, katId);
       }
     } else {
       const norm = haendler ? TradeRepublic.normalisiere(haendler) : '';
@@ -1047,7 +1111,7 @@ const Erfassung = {
         typ: z.typ,
         betragCent: cent,
         datum: z.datum,
-        kategorieId: z.kategorieId,
+        kategorieId: katId,
         haendler: haendler,
         notiz: z.notiz.trim(),
         wiederkehrend: z.typ === 'einnahme' ? z.wiederkehrend : false,
@@ -1058,14 +1122,16 @@ const Erfassung = {
         stamm: TradeRepublic.stamm(norm),
         erstellt: Date.now()
       });
-      if (norm) Regeln.lerne(norm, TradeRepublic.stamm(norm), z.kategorieId);
+      if (norm) Regeln.lerne(norm, TradeRepublic.stamm(norm), katId);
     }
 
     sichern();
     Blatt.schliessen();
 
-    // Damit die neue Buchung auch sichtbar ist, springt die Ansicht in ihren Monat.
-    UI.zustand.monat = monatVon(z.datum);
+    // Beim Bearbeiten springt die Ansicht in den Monat der Buchung, damit die
+    // Aenderung sichtbar wird. Neu Erfasstes laesst die Ansicht dagegen in
+    // Ruhe: nach dem Speichern steht man wieder genau dort, wo man war.
+    if (z.bearbeiten) UI.zustand.monat = monatVon(z.datum);
     UI.zeichne();
     UI.melde(z.bearbeiten ? 'Gespeichert' : 'Buchung erfasst', 'gut');
   }
@@ -1886,7 +1952,13 @@ function starten() {
   const nav = document.querySelector('.nav');
   nav.addEventListener('click', (e) => {
     const knopf = e.target.closest('button');
-    if (!knopf || !knopf.dataset.schirm) return;
+    if (!knopf) return;
+
+    // Der runde Knopf in der Mitte ist kein Reiter: er oeffnet direkt die
+    // vorhandene Schnellerfassung.
+    if (knopf.dataset.erfassen) { Erfassung.oeffnen(null); return; }
+
+    if (!knopf.dataset.schirm) return;
     UI.zeige(knopf.dataset.schirm);
   });
 
@@ -1909,6 +1981,7 @@ function starten() {
       else if (was === 'sparen') Sparen.oeffnen();
       else if (was === 'einstellungen') Einstellungen.oeffnen();
       else if (was === 'neue-buchung') Erfassung.oeffnen(null);
+      else if (was === 'nulltag') Zaehler.nullTagEintragen();
       else if (was === 'vermoegen-neu') Vermoegen.bearbeiten(null);
       else if (was === 'vermoegen-posten') Vermoegen.bearbeiten(tu.dataset.id);
       else if (was === 'liste-ausgaben')  { UI.zustand.listenArt = 'ausgabe';  UI.zeige('liste'); }

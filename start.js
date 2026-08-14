@@ -106,6 +106,81 @@ const Monatsrechnung = {
 };
 
 /* ============================================================
+   Erfassungs-Zähler
+   ============================================================
+   Misst nicht das Geld, sondern die Gewohnheit: An wie vielen
+   der letzten 30 Kalendertage ist überhaupt etwas festgehalten
+   worden?
+
+   Ein Tag gilt als erfasst, wenn er mindestens eine Buchung
+   trägt ODER als Nulltag eingetragen wurde.
+
+   Bewusst kein Streak: ein ausgelassener Tag setzt nichts
+   zurück, er fällt nach 30 Tagen einfach hinten aus dem
+   Fenster heraus.
+
+   Nichts davon wird gespeichert. Der Wert entsteht bei jedem
+   Öffnen neu aus den Buchungen und der Liste "nullTage" -
+   deshalb stimmt er auch nach dem Einspielen eines Backups.
+   ============================================================ */
+
+const FENSTER_TAGE = 30;
+const ZIEL_TAGE    = 24;
+
+const Zaehler = {
+
+  // ISO-Datum von heute aus um "abstand" Tage zurück.
+  tagVor: function (abstand) {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);          // Mittag: keine Sommerzeit-Rutscher
+    d.setDate(d.getDate() - abstand);
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getDate()).padStart(2, '0');
+  },
+
+  // Alle Tage, an denen etwas festgehalten wurde - als Menge.
+  erfassteTage: function () {
+    const menge = new Set(Daten.nullTage || []);
+    (Daten.buchungen || []).forEach((b) => { if (b.datum) menge.add(b.datum); });
+    return menge;
+  },
+
+  // Das Fenster der letzten 30 Tage, ältester Tag zuerst.
+  fenster: function () {
+    const menge = this.erfassteTage();
+    const tage = [];
+    for (let i = FENSTER_TAGE - 1; i >= 0; i--) {
+      const iso = this.tagVor(i);
+      tage.push({ datum: iso, erfasst: menge.has(iso) });
+    }
+    return tage;
+  },
+
+  heuteErfasst: function () {
+    return this.erfassteTage().has(heuteISO());
+  },
+
+  gesternErfasst: function () {
+    return this.erfassteTage().has(this.tagVor(1));
+  },
+
+  // Trägt heute als Nulltag ein. Kommt später doch noch eine Buchung
+  // dazu, bleibt der Tag einfach erfasst - beides zählt gleich.
+  nullTagEintragen: function () {
+    const heute = heuteISO();
+    if (!Array.isArray(Daten.nullTage)) Daten.nullTage = [];
+    if (Daten.nullTage.indexOf(heute) === -1) {
+      Daten.nullTage.push(heute);
+      Daten.nullTage.sort();
+      sichern();
+    }
+    UI.zeichne();
+    UI.melde('Heute als Nulltag festgehalten', 'gut');
+  }
+};
+
+/* ============================================================
    Startseite
    ============================================================ */
 
@@ -154,14 +229,56 @@ const Start = {
           (r.geschaetzt
             ? '<div class="hero-schaetzung">≈ gerechnet mit deinem Mindestnetto</div>'
             : '') +
+          this.zaehlerBlock() +
         '</div>' +
 
+        this.zweiterTagHinweis() +
         this.notgroschenKarte() +
         this.sparzielKarte() +
         this.kategorienKarte() +
 
         (this.nichtsEingerichtet() ? this.einrichtenHinweis() : '') +
       '</div>';
+  },
+
+  // Der Erfassungs-Zähler unter der großen Zahl: eine Zeile Text,
+  // darunter 30 Punkte, ältester links.
+  zaehlerBlock: function () {
+    const tage = Zaehler.fenster();
+    const anzahl = tage.reduce((s, t) => s + (t.erfasst ? 1 : 0), 0);
+
+    const punkte = tage.map((t) =>
+      '<i class="' + (t.erfasst ? 'an' : '') + '"></i>').join('');
+
+    // Ab dem Ziel in der Erfolgsfarbe, darunter neutral. Nie rot,
+    // nie warnend - der Zähler soll nicht mahnen.
+    const klasse = anzahl >= ZIEL_TAGE ? ' gut' : '';
+
+    return '<div class="zaehler">' +
+        '<div class="zaehler-text">' +
+          '<b class="zaehler-zahl' + klasse + '">' + anzahl + '</b> von ' +
+          FENSTER_TAGE + ' Tagen erfasst' +
+        '</div>' +
+        '<div class="zaehler-punkte" aria-hidden="true">' + punkte + '</div>' +
+        (Zaehler.heuteErfasst()
+          ? ''
+          : '<button class="zaehler-knopf" data-tu="nulltag">Heute nichts ausgegeben</button>') +
+      '</div>';
+  },
+
+  // Ein einziger leiser Hinweis, höchstens einmal am Tag. Keine
+  // Benachrichtigung, kein Ton, keine Aufzählung verpasster Tage.
+  zweiterTagHinweis: function () {
+    if (Zaehler.heuteErfasst() || Zaehler.gesternErfasst()) return '';
+
+    const heute = heuteISO();
+    if (Daten.einstellungen.hinweisTag === heute) return '';
+    Daten.einstellungen.hinweisTag = heute;
+    sichern();
+
+    return '<div class="karte hinweis-leise">' +
+      'Zweiter Tag ohne Eintrag — kurz was erfassen?' +
+    '</div>';
   },
 
   nichtsEingerichtet: function () {

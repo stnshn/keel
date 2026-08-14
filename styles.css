@@ -81,7 +81,9 @@ select {
 #app {
   min-height: 100%;
   padding-top: var(--sicher-oben);
-  padding-bottom: calc(var(--nav-hoehe) + var(--sicher-unten) + 12px);
+  /* Der erhoehte Plus-Knopf ragt ueber die Leiste hinaus - deshalb unten
+     etwas mehr Luft, damit er nichts verdeckt. */
+  padding-bottom: calc(var(--nav-hoehe) + var(--sicher-unten) + 34px);
 }
 
 .kopf {
@@ -263,7 +265,8 @@ select {
   -webkit-backdrop-filter: saturate(180%) blur(18px);
   border-top: 1px solid var(--linie);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Vier Reiter, dazwischen eine schmalere Spalte fuer den Plus-Knopf. */
+  grid-template-columns: 1fr 1fr 78px 1fr 1fr;
   align-items: stretch;
 }
 .nav button {
@@ -277,6 +280,31 @@ select {
 }
 .nav button svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .nav button.an { color: var(--akzent); }
+
+/* Der Plus-Knopf sitzt erhoeht ueber der Leiste, damit er sofort ins Auge
+   faellt und mit dem Daumen sicher zu treffen ist. Der dunkle Ring laesst
+   ihn wie ausgeschnitten aus der Leiste wirken. */
+.nav .nav-plus {
+  justify-self: center;
+  align-self: start;
+  width: 58px; height: 58px;
+  margin-top: -20px;
+  padding-top: 0;
+  gap: 0;
+  border-radius: 50%;
+  background: var(--akzent);
+  color: #04231F;
+  box-shadow: 0 0 0 5px var(--bg), 0 8px 20px rgba(45, 212, 191, 0.30);
+  transition: transform 0.12s ease;
+}
+.nav .nav-plus svg {
+  width: 27px; height: 27px;
+  stroke-width: 2.6;
+}
+.nav .nav-plus:active { transform: scale(0.93); }
+@media (prefers-reduced-motion: reduce) {
+  .nav .nav-plus { transition: none; }
+}
 
 /* ---------- Blatt / Modal ---------- */
 
@@ -360,6 +388,23 @@ select {
 .betrag-anzeige.ein { color: var(--plus); }
 .betrag-anzeige .grau { color: var(--text-sehrleise); }
 
+/* Solange noch nichts eingetippt ist, blinkt ein Strich: der Ziffernblock
+   ist sofort bereit, ohne vorher irgendwo hineinzutippen. */
+.betrag-anzeige.leer .grau::after {
+  content: '';
+  display: inline-block;
+  width: 3px; height: 0.72em;
+  margin-left: 5px;
+  vertical-align: -0.04em;
+  border-radius: 2px;
+  background: var(--akzent);
+  animation: caret-blinken 1.1s steps(1, end) infinite;
+}
+@keyframes caret-blinken { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .betrag-anzeige.leer .grau::after { animation: none; }
+}
+
 .numpad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -400,6 +445,10 @@ select {
 }
 .kat-kachel.an { border-color: var(--akzent); background: var(--karte-hell); }
 .kat-kachel.an .name { color: var(--text); }
+
+/* Automatisch vorbelegt (die zuletzt benutzte Kategorie): zusaetzlich zum
+   Rahmen ein weicher Schein, damit die Vorauswahl sofort auffaellt. */
+.kat-kachel.vorbelegt { box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.16); }
 
 /* ---------- Formular ---------- */
 
@@ -581,7 +630,7 @@ select {
 .toast {
   position: fixed;
   left: 16px; right: 16px;
-  bottom: calc(var(--nav-hoehe) + var(--sicher-unten) + 16px);
+  bottom: calc(var(--nav-hoehe) + var(--sicher-unten) + 30px);
   z-index: 90;
   background: var(--karte-hell);
   border: 1px solid var(--linie);
@@ -787,6 +836,53 @@ select {
 .hero-schaetzung {
   color: var(--text-sehrleise); font-size: 11.5px; margin-top: 10px;
   padding-top: 9px; border-top: 1px solid var(--linie);
+}
+
+/* ---------- Erfassungs-Zaehler ----------
+   Sitzt unter der grossen Zahl und soll dort nicht mitreden:
+   klein, ruhig, ohne Warnfarbe. */
+.zaehler {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--linie);
+}
+.zaehler-text {
+  font-size: 12.5px; color: var(--text-leise);
+  font-variant-numeric: tabular-nums;
+}
+.zaehler-zahl { font-weight: 700; color: var(--text); }
+.zaehler-zahl.gut { color: var(--plus); }
+
+.zaehler-punkte {
+  display: grid;
+  grid-template-columns: repeat(30, 1fr);
+  gap: 3px;
+  margin-top: 9px;
+}
+.zaehler-punkte > i {
+  display: block; width: 6px; height: 6px; margin: 0 auto;
+  border-radius: 50%;
+  background: var(--karte-hell);
+  box-shadow: inset 0 0 0 1px var(--linie);
+}
+.zaehler-punkte > i.an {
+  background: var(--akzent);
+  box-shadow: none;
+}
+
+.zaehler-knopf {
+  display: block; margin: 12px auto 0;
+  padding: 7px 14px;
+  font-size: 12.5px; color: var(--text-leise);
+  background: var(--karte-hell);
+  border: 1px solid var(--linie);
+  border-radius: 999px;
+}
+.zaehler-knopf:active { background: var(--linie); }
+
+/* Der eine leise Hinweis - Fliesstext, kein Alarm. */
+.hinweis-leise {
+  font-size: 13.5px; line-height: 1.5;
+  color: var(--text-leise); text-align: center;
 }
 
 .karte-summe {
