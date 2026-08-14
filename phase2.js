@@ -720,10 +720,11 @@ const Vermoegen = {
         const art = VERMOEGENSARTEN[p.art] || VERMOEGENSARTEN.sonstiges;
         const anzahl = (p.staende || []).length;
         const letzte = anzahl ? p.staende[anzahl - 1].datum : null;
+        const istNot = p.id === Daten.notgroschen.vermoegenId && !Notgroschen.heisstSelbst(p);
         return '<button class="listenzeile" data-vm="' + esc(p.id) + '">' +
           '<span class="icon">' + esc(p.emoji || art.emoji) + '</span>' +
           '<span class="mitte"><span class="haupt">' + esc(p.name) + '</span>' +
-            '<span class="neben">' + esc(art.name) +
+            '<span class="neben">' + esc(art.name) + (istNot ? ' · 🛟 Notgroschen' : '') +
             (letzte ? ' · Stand vom ' + esc(datumText(letzte)) : ' · noch kein Stand') + '</span></span>' +
           '<span class="rechts mono">' + geld(this.letzterStand(p)) + ' €</span>' +
         '</button>';
@@ -777,6 +778,11 @@ const Vermoegen = {
       const punkte = staende.map((s) => ({ datum: s.datum, cent: s.centStand }));
 
       koerper.innerHTML =
+        (z.id && z.id === Daten.notgroschen.vermoegenId
+          ? '<p class="hinweis" style="margin-top:0">🛟 Dieser Posten ist dein <b>Notgroschen</b>. ' +
+            'Der Stand, den du hier einträgst, steht auch auf der Startseite.</p>'
+          : '') +
+
         '<div class="feld"><label>Bezeichnung</label>' +
           '<input type="text" id="vm-name" value="' + esc(z.name) + '" ' +
           'placeholder="z. B. Girokonto" autocomplete="off" enterkeyhint="done"></div>' +
@@ -855,7 +861,11 @@ const Vermoegen = {
 
       const loeschen = koerper.querySelector('#vm-loeschen');
       if (loeschen) loeschen.addEventListener('click', () => {
-        if (!confirm('Posten „' + z.name + '" mit allen Ständen löschen?')) return;
+        const warnung = z.id === Daten.notgroschen.vermoegenId
+          ? '\n\nDein Notgroschen ist mit diesem Posten verknüpft. Die Verknüpfung ' +
+            'wird gelöst; der zuletzt bekannte Stand bleibt als Zahl erhalten.'
+          : '';
+        if (!confirm('Posten „' + z.name + '" mit allen Ständen löschen?' + warnung)) return;
         Daten.vermoegen = (Daten.vermoegen || []).filter((p) => p.id !== z.id);
         sichern(); Blatt.schliessen(); Vermoegen.zeichne(); UI.zeichne();
         UI.melde('Gelöscht');

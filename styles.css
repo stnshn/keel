@@ -69,6 +69,13 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--akzent);
 }
+/* Gesperrte Felder: der Wert kommt woanders her (z. B. der Notgroschen aus
+   einem Vermoegensposten). iOS blasst sie sonst kaum sichtbar ab. */
+input:disabled, select:disabled, textarea:disabled {
+  opacity: .7;
+  color: var(--text-leise);
+  -webkit-text-fill-color: var(--text-leise);
+}
 select {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%238C9AAB' stroke-width='2' fill='none' stroke-linecap='round'/></svg>");
   background-repeat: no-repeat;

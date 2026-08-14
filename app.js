@@ -66,7 +66,7 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 5,
+      version: 6,
       erstellt: new Date().toISOString(),
       buchungen: [],
       // Tage, an denen bewusst nichts ausgegeben wurde (ISO-Datum, z. B.
@@ -78,7 +78,9 @@ const Speicher = {
       budgets: {},
       vermoegen: [],
       kredite: [],
-      notgroschen: { standCent: 0, zielCent: 0 },
+      // vermoegenId zeigt auf einen Posten aus dem Vermoegen. Ist es gesetzt,
+      // gilt dessen letzter Stand; standCent wird dann nur nachgefuehrt.
+      notgroschen: { standCent: 0, zielCent: 0, vermoegenId: '' },
       sparziele: [],
       einstellungen: {
         name: '',
@@ -181,7 +183,19 @@ const Speicher = {
     if (typeof e.backupBandTag    !== 'string')  e.backupBandTag = '';
     if (typeof e.katHinweisGezeigt !== 'boolean') e.katHinweisGezeigt = false;
 
-    d.version = 5;
+    // --- Erweiterung auf Version 6 (Notgroschen am Vermoegen) ---
+    // Der Notgroschen kann an einen Vermoegensposten gekoppelt sein. Dann ist
+    // dessen letzter Stand die Wahrheit und wird hier nachgezogen. Zeigt die
+    // Kopplung ins Leere - Posten geloescht oder Backup ohne ihn -, wird sie
+    // still geloest; die zuletzt bekannte Zahl bleibt stehen.
+    if (typeof d.notgroschen.vermoegenId !== 'string') d.notgroschen.vermoegenId = '';
+    if (d.notgroschen.vermoegenId) {
+      const p = d.vermoegen.find((x) => x.id === d.notgroschen.vermoegenId);
+      if (!p) d.notgroschen.vermoegenId = '';
+      else if (p.staende.length) d.notgroschen.standCent = p.staende[p.staende.length - 1].centStand;
+    }
+
+    d.version = 6;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
@@ -209,7 +223,87 @@ const Speicher = {
 };
 
 let Daten = Speicher.laden();
-function sichern() { Speicher.sichern(Daten); }
+
+/* ------------------------------------------------------------
+   Notgroschen
+
+   Der Notgroschen ist entweder eine Zahl fuer sich - dann pflegst
+   du sie unter "Sparen" von Hand - oder er ist an einen Posten aus
+   dem Vermoegen gekoppelt. Im gekoppelten Fall gibt es nur eine
+   Quelle: der letzte Stand des Postens. "standCent" wird bei jedem
+   Sichern nachgezogen, damit ein Backup auch fuer sich allein die
+   richtige Zahl enthaelt.
+   ------------------------------------------------------------ */
+
+const Notgroschen = {
+
+  posten: function () {
+    const id = (Daten.notgroschen || {}).vermoegenId;
+    if (!id) return null;
+    return (Daten.vermoegen || []).find((p) => p.id === id) || null;
+  },
+
+  gekoppelt: function () { return this.posten() !== null; },
+
+  // Heisst der Posten ohnehin schon "Notgroschen", waere jeder Zusatz in
+  // Listen und Ueberschriften doppelt gemoppelt.
+  heisstSelbst: function (p) {
+    return !!p && String(p.name || '').trim().toLowerCase() === 'notgroschen';
+  },
+
+  // Der Stand, der ueberall in der App gezeigt wird.
+  stand: function () {
+    const p = this.posten();
+    if (!p) return (Daten.notgroschen || {}).standCent || 0;
+    return (p.staende || []).length ? p.staende[p.staende.length - 1].centStand : 0;
+  },
+
+  // Zieht die gespeicherte Zahl nach und loest eine Kopplung, deren Posten
+  // es nicht mehr gibt. Laeuft bei jedem Sichern mit.
+  abgleichen: function () {
+    const n = Daten.notgroschen;
+    if (!n || !n.vermoegenId) return;
+    if (!this.posten()) { n.vermoegenId = ''; return; }
+    n.standCent = this.stand();
+  },
+
+  // Koppelt an einen vorhandenen Posten. Hat der noch keinen Stand, wandert
+  // die bisherige Notgroschen-Zahl als heutiger Stand hinein - so geht sie
+  // beim Umstellen nicht verloren.
+  koppeln: function (vmId) {
+    const p = (Daten.vermoegen || []).find((x) => x.id === vmId);
+    if (!p) return null;
+    if (!(p.staende || []).length && Daten.notgroschen.standCent > 0) {
+      p.staende = [{ datum: heuteISO(), centStand: Daten.notgroschen.standCent }];
+    }
+    Daten.notgroschen.vermoegenId = p.id;
+    this.abgleichen();
+    return p;
+  },
+
+  loesen: function () { Daten.notgroschen.vermoegenId = ''; },
+
+  // Legt einen eigenen Vermoegensposten fuer den Notgroschen an und koppelt ihn.
+  alsPostenAnlegen: function () {
+    const stand = Daten.notgroschen.standCent || 0;
+    const p = {
+      id: neueId('vm'),
+      name: 'Notgroschen',
+      art: 'konto',
+      emoji: '🛟',
+      staende: stand > 0 ? [{ datum: heuteISO(), centStand: stand }] : []
+    };
+    if (!Daten.vermoegen) Daten.vermoegen = [];
+    Daten.vermoegen.push(p);
+    Daten.notgroschen.vermoegenId = p.id;
+    return p;
+  }
+};
+
+function sichern() {
+  Notgroschen.abgleichen();
+  Speicher.sichern(Daten);
+}
 
 /* ============================================================
    3. Hilfsfunktionen
@@ -608,10 +702,11 @@ const UI = {
           .map((p) => {
             const art = VERMOEGENSARTEN[p.art] || VERMOEGENSARTEN.sonstiges;
             const letzte = (p.staende || []).length ? p.staende[p.staende.length - 1].datum : null;
+            const istNot = p.id === Daten.notgroschen.vermoegenId && !Notgroschen.heisstSelbst(p);
             return '<button class="listenzeile" data-tu="vermoegen-posten" data-id="' + esc(p.id) + '">' +
               '<span class="icon">' + esc(p.emoji || art.emoji) + '</span>' +
               '<span class="mitte"><span class="haupt">' + esc(p.name) + '</span>' +
-                '<span class="neben">' + esc(art.name) +
+                '<span class="neben">' + esc(art.name) + (istNot ? ' · 🛟 Notgroschen' : '') +
                 (letzte ? ' · Stand vom ' + esc(datumText(letzte)) : ' · noch kein Stand') + '</span></span>' +
               '<span class="rechts mono">' + geld(Vermoegen.letzterStand(p)) + ' €</span></button>';
           }).join('') + '</div>'

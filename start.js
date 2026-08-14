@@ -322,7 +322,10 @@ const Start = {
 
   notgroschenKarte: function () {
     const n = Daten.notgroschen || { standCent: 0, zielCent: 0 };
-    if (!n.standCent && !n.zielCent) {
+    // Bei gekoppeltem Notgroschen zaehlt der Stand des Vermoegenspostens.
+    const stand = Notgroschen.stand();
+    const posten = Notgroschen.posten();
+    if (!stand && !n.zielCent) {
       return '<button class="karte karte-knopf leer-karte" data-tu="sparen">' +
         '<span class="leer-symbol">🛟</span>' +
         '<span class="leer-text"><b>Notgroschen anlegen</b>' +
@@ -330,18 +333,20 @@ const Start = {
         '<span class="chevron">›</span></button>';
     }
 
-    const anteil = n.zielCent > 0 ? Math.min(1, n.standCent / n.zielCent) : 0;
+    const anteil = n.zielCent > 0 ? Math.min(1, stand / n.zielCent) : 0;
     const fix = typeof Fixkosten !== 'undefined' ? Fixkosten.monatsSumme() : 0;
     const fuss = fix > 0
-      ? 'deckt ' + (n.standCent / fix).toFixed(1).replace('.', ',') + ' Monate Fixkosten'
-      : (n.zielCent > n.standCent
-          ? 'noch ' + geld(n.zielCent - n.standCent) + ' € bis zum Ziel'
+      ? 'deckt ' + (stand / fix).toFixed(1).replace('.', ',') + ' Monate Fixkosten'
+      : (n.zielCent > stand
+          ? 'noch ' + geld(n.zielCent - stand) + ' € bis zum Ziel'
           : 'Ziel erreicht');
 
     return '<button class="karte karte-knopf" data-tu="sparen">' +
-      '<p class="karte-titel">Notgroschen<span class="karte-pfeil">›</span></p>' +
+      '<p class="karte-titel">Notgroschen' +
+        (posten && !Notgroschen.heisstSelbst(posten) ? ' · ' + esc(posten.name) : '') +
+        '<span class="karte-pfeil">›</span></p>' +
       '<div class="spar-kopf">' +
-        '<span class="spar-stand">' + geldE(n.standCent) + '</span>' +
+        '<span class="spar-stand">' + geldE(stand) + '</span>' +
         '<span class="spar-ziel">Ziel ' + geldE(n.zielCent) + '</span>' +
       '</div>' +
       '<div class="spar-balken"><i style="width:' + (anteil * 100).toFixed(1) + '%"></i></div>' +
@@ -624,6 +629,8 @@ const Sparen = {
 
     const n = Daten.notgroschen;
     const fix = typeof Fixkosten !== 'undefined' ? Fixkosten.monatsSumme() : 0;
+    const posten = Notgroschen.posten();
+    const stand = Notgroschen.stand();
 
     koerper.innerHTML =
       '<p class="abschnitt-titel" style="margin-top:0">Monatliche Sparrate</p>' +
@@ -637,17 +644,37 @@ const Sparen = {
       '</div>' +
 
       '<p class="abschnitt-titel">Notgroschen</p>' +
+
+      '<div class="feld"><label>Wo liegt er?</label>' +
+        '<select id="sp-not-vm">' +
+          '<option value=""' + (posten ? '' : ' selected') + '>Nirgends – Stand von Hand pflegen</option>' +
+          (Daten.vermoegen || []).map((p) =>
+            '<option value="' + esc(p.id) + '"' + (posten && posten.id === p.id ? ' selected' : '') + '>' +
+            esc((p.emoji ? p.emoji + ' ' : '') + p.name) + '</option>').join('') +
+          '<option value="__neu">＋ Neuen Vermögensposten anlegen</option>' +
+        '</select></div>' +
+
       '<div class="feld-reihe">' +
         '<div class="feld"><label>Aktueller Stand</label>' +
-          '<input type="text" inputmode="decimal" id="sp-not-ist" ' +
-          'value="' + (n.standCent ? geld(n.standCent) : '') + '" placeholder="0,00"></div>' +
+          '<input type="text" inputmode="decimal" id="sp-not-ist" ' + (posten ? 'disabled ' : '') +
+          'value="' + (stand ? geld(stand) : '') + '" placeholder="0,00"></div>' +
         '<div class="feld"><label>Ziel</label>' +
           '<input type="text" inputmode="decimal" id="sp-not-ziel" ' +
           'value="' + (n.zielCent ? geld(n.zielCent) : '') + '" placeholder="0,00"></div>' +
       '</div>' +
-      (fix > 0 && n.standCent > 0
+
+      (posten
+        ? '<p class="hinweis" style="margin-top:-4px">Der Stand kommt aus deinem Vermögensposten ' +
+            '<b>' + esc(posten.name) + '</b>. Trag ihn dort ein – hier erscheint er dann von selbst. ' +
+            'So zählt dein Notgroschen genau einmal, nämlich im Vermögen.</p>' +
+          (typeof Vermoegen !== 'undefined'
+            ? '<button class="knopf zweit" id="sp-not-oeffnen">Stand in „' + esc(posten.name) + '" eintragen</button>'
+            : '')
+        : '') +
+
+      (fix > 0 && stand > 0
         ? '<p class="hinweis" style="margin-top:-4px">Dein Polster deckt derzeit <b>' +
-          (n.standCent / fix).toFixed(1).replace('.', ',') + ' Monate</b> deiner Fixkosten. ' +
+          (stand / fix).toFixed(1).replace('.', ',') + ' Monate</b> deiner Fixkosten. ' +
           'Als Faustregel gelten drei bis sechs.</p>'
         : '<p class="hinweis" style="margin-top:-4px">Üblich sind drei bis sechs Monatsausgaben.</p>') +
 
@@ -670,14 +697,46 @@ const Sparen = {
 
     const merke = () => {
       Daten.einstellungen.sparrateCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-rate').value) || 0);
-      Daten.notgroschen.standCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-not-ist').value) || 0);
-      Daten.notgroschen.zielCent  = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-not-ziel').value) || 0);
+      // Bei gekoppeltem Notgroschen gehoert das Feld dem Vermoegensposten -
+      // von hier aus wird es nicht ueberschrieben.
+      if (!Notgroschen.gekoppelt()) {
+        Daten.notgroschen.standCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-not-ist').value) || 0);
+      }
+      Daten.notgroschen.zielCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-not-ziel').value) || 0);
       sichern();
       UI.zeichne();
     };
 
     ['#sp-rate', '#sp-not-ist', '#sp-not-ziel'].forEach((s) =>
       koerper.querySelector(s).addEventListener('change', merke));
+
+    koerper.querySelector('#sp-not-vm').addEventListener('change', (e) => {
+      const wahl = e.target.value;
+      merke(); // erst den handgepflegten Stand festhalten, dann umstellen
+
+      if (wahl === '__neu') {
+        const p = Notgroschen.alsPostenAnlegen();
+        UI.melde('Posten „' + p.name + '" im Vermögen angelegt', 'gut');
+      } else if (wahl) {
+        const p = Notgroschen.koppeln(wahl);
+        UI.melde(p ? 'Mit „' + p.name + '" verknüpft' : 'Posten nicht gefunden', p ? 'gut' : 'fehler');
+      } else {
+        Notgroschen.loesen();
+        UI.melde('Verknüpfung gelöst');
+      }
+
+      sichern();
+      this.zeichne(koerper);
+      UI.zeichne();
+    });
+
+    const notOeffnen = koerper.querySelector('#sp-not-oeffnen');
+    if (notOeffnen) notOeffnen.addEventListener('click', () => {
+      merke();
+      // Das Sparen-Blatt zumachen, damit der Posten allein davorsteht.
+      Blatt.schliessen();
+      Vermoegen.bearbeiten(posten.id);
+    });
 
     koerper.querySelector('#sp-neu').addEventListener('click', () => { merke(); this.zielBearbeiten(null); });
     koerper.querySelectorAll('[data-sz]').forEach((b) =>
