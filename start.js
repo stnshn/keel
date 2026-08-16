@@ -184,19 +184,12 @@ const Zaehler = {
    Startseite
    ============================================================ */
 
+const KAT_KURZ = 4;   // so viele Kategorien stehen offen, der Rest klappt auf
+
 const Start = {
 
-  zeitraum: 1,   // Monate für die Kategorie-Auswertung
-
-  gruss: function () {
-    const name = (Daten.einstellungen.name || '').trim();
-    const std = new Date().getHours();
-    const wort = std < 5  ? 'Noch wach'
-               : std < 11 ? 'Guten Morgen'
-               : std < 18 ? 'Hallo'
-               : 'Guten Abend';
-    return name ? wort + ', ' + name : wort;
-  },
+  zeitraum: 1,        // Monate für die Kategorie-Auswertung
+  katOffen: false,    // ist die Kategorieliste aufgeklappt?
 
   tageRest: function () {
     const d = new Date();
@@ -204,71 +197,85 @@ const Start = {
     return letzter - d.getDate();
   },
 
+  /* Ein Schirm, eine Zahl. Darüber steht nichts, daneben steht nichts.
+     Alles Weitere ordnet sich darunter ein - und was nur beim genauen
+     Hinsehen zählt, liegt eine Tippbewegung tiefer. */
   html: function () {
     const monat = monatVon(heuteISO());
     const r = Monatsrechnung.alles(monat);
     const rest = this.tageRest();
+    const name = monatText(monat).split(' ')[0];
 
     const klasse = r.verfuegbarCent < 0 ? ' minus'
                  : (r.einnahmenCent > 0 && r.verfuegbarCent < r.einnahmenCent * 0.1) ? ' warn' : '';
 
-    return '<div class="start-kopf">' +
-        '<div class="gruss">' + esc(this.gruss()) + '</div>' +
-        '<div class="gruss-unter">' + esc(monatText(monat)) + '</div>' +
-      '</div>' +
-      '<div class="inhalt">' +
+    // Das Ungefähr-Zeichen sitzt an der Zahl selbst, nicht in einer Fußnote.
+    const zahl = (r.geschaetzt ? '≈ ' : '') + geldE(r.verfuegbarCent);
 
-        '<div class="karte hero">' +
-          '<div class="hero-zahl' + klasse + '">' + geldE(r.verfuegbarCent) + '</div>' +
-          '<div class="hero-unter">stehen dir noch zur Verfügung</div>' +
+    return '<div class="inhalt start-inhalt">' +
+
+        '<div class="hero">' +
+          '<div class="hero-zahl' + klasse + heroKlasse(zahl) + '">' + zahl + '</div>' +
           '<div class="hero-tage">' +
-            (rest === 0 ? 'letzter Tag im ' + esc(monatText(monat).split(' ')[0])
-                        : 'noch ' + rest + ' Tag' + (rest === 1 ? '' : 'e') +
-                          ' im ' + esc(monatText(monat).split(' ')[0])) +
+            (rest === 0 ? 'letzter Tag im ' + esc(name)
+                        : 'noch ' + rest + ' Tag' + (rest === 1 ? '' : 'e') + ' im ' + esc(name)) +
           '</div>' +
-          (r.geschaetzt
-            ? '<div class="hero-schaetzung">≈ gerechnet mit deinem Mindestnetto</div>'
-            : '') +
-          this.zaehlerBlock() +
         '</div>' +
 
-        this.zweiterTagHinweis() +
-        this.backupBand() +
-        this.notgroschenKarte() +
-        this.sparzielKarte() +
+        this.zaehlerZeile() +
+        this.band() +
+        this.ruecklagenKarte() +
         this.kategorienKarte() +
-
-        (this.nichtsEingerichtet() ? this.einrichtenHinweis() : '') +
       '</div>';
   },
 
-  // Der Erfassungs-Zähler unter der großen Zahl: eine Zeile Text,
-  // darunter 30 Punkte, ältester links.
-  zaehlerBlock: function () {
-    const tage = Zaehler.fenster();
-    const anzahl = tage.reduce((s, t) => s + (t.erfasst ? 1 : 0), 0);
-
-    const punkte = tage.map((t) =>
-      '<i class="' + (t.erfasst ? 'an' : '') + '"></i>').join('');
+  /* Der Erfassungs-Zähler: eine einzige ruhige Zeile. Die 30 Punkte sind
+     entfallen - sie haben dieselbe Zahl ein zweites Mal erzählt. */
+  zaehlerZeile: function () {
+    const anzahl = Zaehler.fenster().reduce((s, t) => s + (t.erfasst ? 1 : 0), 0);
 
     // Ab dem Ziel in der Erfolgsfarbe, darunter neutral. Nie rot,
     // nie warnend - der Zähler soll nicht mahnen.
     const klasse = anzahl >= ZIEL_TAGE ? ' gut' : '';
 
     return '<div class="zaehler">' +
-        '<div class="zaehler-text">' +
+        '<span class="zaehler-text">' +
           '<b class="zaehler-zahl' + klasse + '">' + anzahl + '</b> von ' +
           FENSTER_TAGE + ' Tagen erfasst' +
-        '</div>' +
-        '<div class="zaehler-punkte" aria-hidden="true">' + punkte + '</div>' +
+        '</span>' +
         (Zaehler.heuteErfasst()
           ? ''
           : '<button class="zaehler-knopf" data-tu="nulltag">Heute nichts ausgegeben</button>') +
       '</div>';
   },
 
-  // Ein einziger leiser Hinweis, höchstens einmal am Tag. Keine
-  // Benachrichtigung, kein Ton, keine Aufzählung verpasster Tage.
+  /* Höchstens EIN Band, nach Dringlichkeit. Vorher konnten drei
+     gleichzeitig zwischen der großen Zahl und den Karten stehen. */
+  band: function () {
+    if (this.nichtsEingerichtet()) {
+      return this.bandHtml('⚙️', 'Mindestnetto und Fixkosten eintragen', 'einstellungen', null);
+    }
+    if (typeof Backup !== 'undefined' && Backup.bandZeigen()) {
+      return this.bandHtml('💾', 'Zeit für ein Backup', 'export', 'backup-band-weg');
+    }
+    return this.zweiterTagHinweis();
+  },
+
+  bandHtml: function (symbol, text, tu, tuZu) {
+    return '<div class="band-hinweis">' +
+        '<button class="bh-haupt" data-tu="' + tu + '">' +
+          '<span class="bh-symbol">' + symbol + '</span>' +
+          '<span class="bh-text">' + esc(text) + '</span>' +
+          '<span class="chevron">›</span>' +
+        '</button>' +
+        (tuZu
+          ? '<button class="bh-zu" data-tu="' + tuZu + '" aria-label="Für heute ausblenden">✕</button>'
+          : '') +
+      '</div>';
+  },
+
+  /* Ein einziger leiser Hinweis, höchstens einmal am Tag. Er führt jetzt
+     direkt in die Erfassung, statt nur davon zu sprechen. */
   zweiterTagHinweis: function () {
     if (Zaehler.heuteErfasst() || Zaehler.gesternErfasst()) return '';
 
@@ -277,31 +284,7 @@ const Start = {
     Daten.einstellungen.hinweisTag = heute;
     sichern();
 
-    return '<div class="karte hinweis-leise">' +
-      'Zweiter Tag ohne Eintrag — kurz was erfassen?' +
-    '</div>';
-  },
-
-  /* Das Erinnerungsband. Es steht zwischen den Karten, nicht über der
-     großen Zahl - es soll nicht das Erste sein, was ins Auge fällt.
-     Ein Antippen führt direkt zur Sicherung, das ✕ legt es für heute weg. */
-  backupBand: function () {
-    if (typeof Backup === 'undefined' || !Backup.bandZeigen()) return '';
-
-    const tage = Backup.tageSeit();
-    const unter = tage === null
-      ? 'Deine Daten liegen nur auf diesem iPhone.'
-      : 'Das letzte ist ' + tage + ' Tage her.';
-
-    return '<div class="backup-band">' +
-        '<button class="bb-haupt" data-tu="export">' +
-          '<span class="bb-symbol">💾</span>' +
-          '<span class="bb-text"><b>Zeit für ein Backup</b>' +
-            '<small>' + esc(unter) + '</small></span>' +
-          '<span class="chevron">›</span>' +
-        '</button>' +
-        '<button class="bb-zu" data-tu="backup-band-weg" aria-label="Für heute ausblenden">✕</button>' +
-      '</div>';
+    return this.bandHtml('✏️', 'Zwei Tage nichts erfasst', 'neue-buchung', null);
   },
 
   nichtsEingerichtet: function () {
@@ -309,88 +292,63 @@ const Start = {
            !(Daten.fixkosten || []).length;
   },
 
-  einrichtenHinweis: function () {
-    return '<div class="karte" style="text-align:center">' +
-      '<div style="font-size:30px;margin-bottom:8px">👋</div>' +
-      '<div style="font-size:14.5px;line-height:1.6;color:var(--text-leise)">' +
-        'Damit die Zahl oben stimmt, braucht Keel zwei Angaben:<br>' +
-        'dein <b>Mindestnetto</b> und deine <b>Fixkosten</b>.' +
-      '</div>' +
-      '<button class="knopf" data-tu="einstellungen" style="margin-top:14px">Jetzt einrichten</button>' +
-    '</div>';
-  },
-
-  notgroschenKarte: function () {
+  /* Notgroschen und Sparziel standen als zwei gleich aussehende Karten
+     untereinander - mit doppeltem Balken, doppeltem Ziel und doppelter
+     Prozentzahl. Jetzt eine Karte, zwei Zeilen. Die Prozentzahl ist weg:
+     der Balken zeigt sie bereits. */
+  ruecklagenKarte: function () {
     const n = Daten.notgroschen || { standCent: 0, zielCent: 0 };
-    // Bei gekoppeltem Notgroschen zaehlt der Stand des Vermoegenspostens.
-    const stand = Notgroschen.stand();
-    const posten = Notgroschen.posten();
-    if (!stand && !n.zielCent) {
+    const stand = Notgroschen.stand();        // gekoppelt: Stand des Postens
+    const hatNot = !!(stand || n.zielCent);
+
+    const ziele = Daten.sparziele || [];
+    const z = ziele.find((x) => x.aufStartseite) || ziele[0] || null;
+
+    if (!hatNot && !z) {
       return '<button class="karte karte-knopf leer-karte" data-tu="sparen">' +
         '<span class="leer-symbol">🛟</span>' +
-        '<span class="leer-text"><b>Notgroschen anlegen</b>' +
-        '<small>Wie viele Monate trägt dein Polster?</small></span>' +
+        '<span class="leer-text">Notgroschen und Sparziele</span>' +
         '<span class="chevron">›</span></button>';
     }
 
-    const anteil = n.zielCent > 0 ? Math.min(1, stand / n.zielCent) : 0;
-    const fix = typeof Fixkosten !== 'undefined' ? Fixkosten.monatsSumme() : 0;
-    const fuss = fix > 0
-      ? 'deckt ' + (stand / fix).toFixed(1).replace('.', ',') + ' Monate Fixkosten'
-      : (n.zielCent > stand
-          ? 'noch ' + geld(n.zielCent - stand) + ' € bis zum Ziel'
-          : 'Ziel erreicht');
-
     return '<button class="karte karte-knopf" data-tu="sparen">' +
-      '<p class="karte-titel">Notgroschen' +
-        (posten && !Notgroschen.heisstSelbst(posten) ? ' · ' + esc(posten.name) : '') +
-        '<span class="karte-pfeil">›</span></p>' +
-      '<div class="spar-kopf">' +
-        '<span class="spar-stand">' + geldE(stand) + '</span>' +
-        '<span class="spar-ziel">Ziel ' + geldE(n.zielCent) + '</span>' +
-      '</div>' +
-      '<div class="spar-balken"><i style="width:' + (anteil * 100).toFixed(1) + '%"></i></div>' +
-      '<div class="spar-fuss">' +
-        '<span>' + esc(fuss) + '</span>' +
-        '<span class="spar-prozent">' + Math.round(anteil * 100) + ' %</span>' +
-      '</div>' +
-    '</button>';
-  },
-
-  sparzielKarte: function () {
-    const liste = Daten.sparziele || [];
-    if (!liste.length) {
-      return '<button class="karte karte-knopf leer-karte" data-tu="sparen">' +
-        '<span class="leer-symbol">🎯</span>' +
-        '<span class="leer-text"><b>Sparziel anlegen</b>' +
-        '<small>Worauf sparst du gerade?</small></span>' +
-        '<span class="chevron">›</span></button>';
-    }
-
-    const z = liste.find((x) => x.aufStartseite) || liste[0];
-    const anteil = z.zielCent > 0 ? Math.min(1, z.standCent / z.zielCent) : 0;
-    const fertig = z.zielCent > 0 && z.standCent >= z.zielCent;
-
-    return '<button class="karte karte-knopf" data-tu="sparen">' +
-      '<p class="karte-titel">Sparziel · ' + esc(z.name) +
-        '<span class="karte-pfeil">›</span></p>' +
-      '<div class="spar-kopf">' +
-        '<span class="spar-stand">' + geldE(z.standCent) + '</span>' +
-        '<span class="spar-ziel">Ziel ' + geldE(z.zielCent) + '</span>' +
-      '</div>' +
-      '<div class="spar-balken"><i style="width:' + (anteil * 100).toFixed(1) + '%"></i></div>' +
-      '<div class="spar-fuss">' +
-        '<span>' + (fertig ? 'Ziel erreicht 🎉'
-                           : 'noch ' + geld(Math.max(0, z.zielCent - z.standCent)) + ' € bis zum Ziel') + '</span>' +
-        '<span class="spar-prozent">' + Math.round(anteil * 100) + ' %</span>' +
-      '</div>' +
-      (liste.length > 1
-        ? '<div class="spar-weitere">und ' + (liste.length - 1) + ' weitere' +
-          (liste.length === 2 ? 's Ziel' : ' Ziele') + '</div>'
+      '<p class="karte-titel">Rücklagen<span class="karte-pfeil">›</span></p>' +
+      (hatNot ? this.ruecklageZeile('🛟', 'Notgroschen', stand, n.zielCent)
+              : this.ruecklageLeer('🛟', 'Notgroschen')) +
+      (z ? this.ruecklageZeile('🎯', z.name, z.standCent, z.zielCent)
+         : this.ruecklageLeer('🎯', 'Sparziel')) +
+      (ziele.length > 1
+        ? '<div class="rl-weitere">und ' + (ziele.length - 1) + ' weitere' +
+          (ziele.length === 2 ? 's Ziel' : ' Ziele') + '</div>'
         : '') +
     '</button>';
   },
 
+  ruecklageZeile: function (symbol, name, standCent, zielCent) {
+    const anteil = zielCent > 0 ? Math.min(1, standCent / zielCent) : 0;
+    return '<div class="rl-zeile">' +
+        '<div class="rl-kopf">' +
+          '<span class="rl-name">' + esc(symbol) + ' ' + esc(name) + '</span>' +
+          '<span class="rl-wert">' + geld(standCent) +
+            (zielCent > 0 ? '<small> von ' + geld(zielCent) + ' €</small>' : ' €') +
+          '</span>' +
+        '</div>' +
+        (zielCent > 0
+          ? '<div class="spar-balken"><i style="width:' + (anteil * 100).toFixed(1) + '%"></i></div>'
+          : '') +
+      '</div>';
+  },
+
+  ruecklageLeer: function (symbol, name) {
+    return '<div class="rl-zeile rl-leer">' +
+        '<span class="rl-name">' + esc(symbol) + ' ' + esc(name) + '</span>' +
+        '<span class="rl-wert">noch nicht angelegt</span>' +
+      '</div>';
+  },
+
+  /* Kurz gehalten: die vier größten Kategorien stehen offen, der Rest
+     klappt auf. Der Zeitraum-Umschalter liegt mit im aufgeklappten Teil -
+     wer ihn braucht, sieht ohnehin gerade genauer hin. */
   kategorienKarte: function () {
     const monate = this.zeitraum;
     const bis = monatVon(heuteISO());
@@ -408,6 +366,9 @@ const Start = {
       .map((id) => ({ id: id, cent: proKat[id] }))
       .sort((a, b) => b.cent - a.cent);
 
+    // Der Zeitraum steht nur dann im Titel, wenn er vom Normalfall abweicht.
+    const titel = 'Ausgaben' + (monate > 1 ? ' · ' + monate + ' Monate' : '');
+
     const schalter =
       '<div class="zeitschalter" role="group" aria-label="Zeitraum">' +
         [1, 3, 6, 12].map((m) =>
@@ -416,33 +377,41 @@ const Start = {
       '</div>';
 
     if (!liste.length) {
+      // Der Zeitraum-Umschalter erscheint nur, wenn es ueberhaupt irgendwann
+      // Ausgaben gab - sonst schiebt man einen leeren Zeitraum hin und her.
+      const jeAusgaben = Daten.buchungen.some((b) => b.typ === 'ausgabe');
       return '<div class="karte">' +
-        '<p class="karte-titel">Ausgaben nach Kategorie</p>' + schalter +
-        '<div class="leer-hinweis" style="padding:22px 8px">Keine Ausgaben in diesem Zeitraum.</div>' +
+        '<p class="karte-titel">' + esc(titel) + '</p>' +
+        (jeAusgaben ? schalter : '') +
+        '<div class="leer-hinweis" style="padding:18px 8px">Nichts ausgegeben.</div>' +
       '</div>';
     }
 
     const groesste = liste[0].cent;
     const gesamt = liste.reduce((s, e) => s + e.cent, 0);
+    const sichtbar = this.katOffen ? liste : liste.slice(0, KAT_KURZ);
 
     return '<div class="karte">' +
-      '<p class="karte-titel">Ausgaben nach Kategorie' +
+      '<p class="karte-titel">' + esc(titel) +
         '<span class="karte-summe">' + geldE(gesamt) + '</span></p>' +
-      schalter +
-      liste.map((e) => {
+      (this.katOffen ? schalter : '') +
+      sichtbar.map((e) => {
         const k = kategorie(e.id) || { name: 'Unbekannt', emoji: '❓' };
         const breite = Math.max(3, Math.round(e.cent / groesste * 100));
         return '<div class="kat-zeile">' +
           '<div class="kat-kopf">' +
             '<span class="emoji">' + esc(k.emoji) + '</span>' +
             '<span class="name">' + esc(k.name) + '</span>' +
-            (monate > 1
-              ? '<span class="anteil">⌀ ' + geld(Math.round(e.cent / monate)) + '</span>' : '') +
-            '<span class="betrag">' + geldE(e.cent) + '</span>' +
+            '<span class="betrag">' + geld(e.cent) + '</span>' +
           '</div>' +
           '<div class="balken"><i style="width:' + breite + '%;background:' + katFarbe() + '"></i></div>' +
         '</div>';
       }).join('') +
+      (liste.length > KAT_KURZ || this.katOffen
+        ? '<button class="mehr-zeile" data-tu="kat-mehr">' +
+            (this.katOffen ? 'weniger' : 'alle ' + liste.length + ' anzeigen') +
+          '</button>'
+        : '') +
     '</div>';
   }
 };
@@ -453,58 +422,57 @@ const Start = {
 
 const EinAus = {
 
+  detailOffen: false,   // steht die Rechnung im Detail offen?
+
+  /* Der Schirm hatte dieselbe Monatsrechnung viermal gezeigt: als Band, als
+     Legende, als Fixkostenliste und als Rechnung. Jetzt trägt das Band sie,
+     die Fixkosten zeigen nur noch, was aussteht, und die Rechnung liegt
+     aufklappbar darunter. */
   html: function () {
     const monat = UI.zustand.monat;
     const r = Monatsrechnung.alles(monat);
 
-    return '<div class="kopf">' +
-        '<h1>Ein &amp; Aus</h1>' +
-        '<div class="unterzeile">' + geldE(r.verfuegbarCent) + ' verfügbar</div>' +
-        UI.monatswahlHtml() +
-      '</div>' +
+    return '<div class="kopf kopf-schlank">' + UI.monatswahlHtml() + '</div>' +
       '<div class="inhalt">' +
         this.bandKarte(r) +
-        this.einnahmenKarte(monat, r) +
         this.fixkostenKarte(monat, r) +
-        this.rechnungKarte(r) +
+        this.rechnung(monat, r) +
         '<button class="listen-knopf" data-tu="liste-ausgaben">' +
           '<span class="sym">🧾</span>' +
           '<span class="txt">Alle Ausgaben<small>' +
-            buchungenImMonat(monat, 'ausgabe').length + ' Buchungen in ' + esc(monatText(monat)) +
+            buchungenText(buchungenImMonat(monat, 'ausgabe').length) +
           '</small></span><span class="chevron">›</span></button>' +
         '<button class="listen-knopf" data-tu="liste-einnahmen">' +
           '<span class="sym">💰</span>' +
           '<span class="txt">Alle Einnahmen<small>' +
-            buchungenImMonat(monat, 'einnahme').length + ' Buchungen in ' + esc(monatText(monat)) +
+            buchungenText(buchungenImMonat(monat, 'einnahme').length) +
           '</small></span><span class="chevron">›</span></button>' +
       '</div>';
   },
 
-  // Fixkosten und Sparen sind zwei Helligkeitsstufen desselben Blaus:
-  // beides ist fest verplant, nur unterschiedlicher Art. Zwei getrennte
-  // Farbtöne wären bei Rot-Grün-Sehschwäche nicht zu unterscheiden.
+  /* Die tragende Karte des Schirms. Fixkosten und Sparen sind zwei
+     Helligkeitsstufen desselben Blaus: beides ist fest verplant, nur
+     unterschiedlicher Art. Zwei getrennte Farbtöne wären bei Rot-Grün-
+     Sehschwäche nicht zu unterscheiden.
+
+     Der Betrag steht in der Wertspalte, nicht zusätzlich im Namen. Die
+     Summe im Kartentitel ist das Geld, um das es hier überhaupt geht. */
   bandKarte: function (r) {
     const fixGesamt = r.fixBezahltCent + r.fixOffenCent;
     const frei = Math.max(0, r.verfuegbarCent);
     const basis = Math.max(r.einnahmenCent,
       fixGesamt + r.sparrateCent + r.variabelCent, 1);
 
-    const fixName = r.fixOffenCent > 0
-      ? 'Fixkosten (' + geld(r.fixOffenCent) + ' € offen)'
-      : 'Fixkosten';
-
     const teile = [
-      { farbe: 'var(--dg-blau-tief)', name: fixName,              cent: fixGesamt },
-      { farbe: 'var(--dg-blau)',      name: 'Sparen',             cent: r.sparrateCent },
+      { farbe: 'var(--dg-blau-tief)', name: 'Fixkosten',           cent: fixGesamt },
+      { farbe: 'var(--dg-blau)',      name: 'Sparen',              cent: r.sparrateCent },
       { farbe: 'var(--dg-teal)',      name: 'variabel ausgegeben', cent: r.variabelCent },
       { farbe: 'var(--linie)',        name: 'noch verfügbar',      cent: frei }
     ].filter((t) => t.cent > 0);
 
-    const quote = r.einnahmenCent > 0 && typeof Fixkosten !== 'undefined'
-      ? Math.round(Fixkosten.monatsSumme() / r.einnahmenCent * 100) : null;
-
     return '<div class="karte">' +
-      '<p class="karte-titel">Wohin dein Geld geht</p>' +
+      '<p class="karte-titel">Wohin dein Geld geht' +
+        '<span class="karte-summe">' + geldE(r.einnahmenCent) + '</span></p>' +
       '<div class="band">' +
         teile.map((t) => '<i style="width:' + (t.cent / basis * 100).toFixed(1) +
           '%;background:' + t.farbe + '"></i>').join('') +
@@ -513,46 +481,21 @@ const EinAus = {
         teile.map((t) => '<div class="legenden-zeile">' +
           '<span class="punkt" style="background:' + t.farbe + '"></span>' +
           '<span class="name">' + esc(t.name) + '</span>' +
-          '<span class="wert">' + geldE(t.cent) + '</span>' +
+          '<span class="wert">' + geld(t.cent) + '</span>' +
         '</div>').join('') +
       '</div>' +
-      (quote !== null
-        ? '<div class="quote"><span>Fixkostenquote</span><b>' + quote + ' %</b></div>'
+      // Nur wenn das Gehalt fehlt - dann steht die ganze Karte auf einer
+      // Schaetzung, und das gehoert dazugesagt.
+      (r.geschaetzt
+        ? '<div class="band-fuss">Gehalt noch nicht da · gerechnet mit ' +
+            geldE(r.mindestCent) + '</div>'
         : '') +
     '</div>';
   },
 
-  einnahmenKarte: function (monat, r) {
-    const g = Monatsrechnung.gehalt(monat);
-    let zeilen = '';
-
-    if (g.da) {
-      const datum = g.buchungen[0].datum;
-      zeilen += '<div class="posten-zeile">' +
-        '<span>Gehalt <small class="gut">✓ am ' + esc(datumText(datum)) + '</small></span>' +
-        '<span class="wert">' + geldE(g.cent) + '</span></div>';
-      if (Math.abs(r.bonusCent) >= 1 && r.mindestCent > 0) {
-        zeilen += '<div class="posten-zeile">' +
-          '<span class="leise">' + (r.bonusCent > 0 ? 'über' : 'unter') + ' deinem Mindestnetto</span>' +
-          '<span class="wert ' + (r.bonusCent > 0 ? 'plus' : 'warn') + '">' +
-            (r.bonusCent > 0 ? '+ ' : '− ') + geldE(Math.abs(r.bonusCent)) + '</span></div>';
-      }
-    } else {
-      zeilen += '<div class="posten-zeile">' +
-        '<span>Gehalt <small class="leise">noch nicht da</small></span>' +
-        '<span class="wert leise">' + geldE(r.mindestCent) + '</span></div>';
-    }
-
-    if (r.sonstigeCent > 0) {
-      zeilen += '<div class="posten-zeile"><span>sonstige Einnahmen</span>' +
-        '<span class="wert">' + geldE(r.sonstigeCent) + '</span></div>';
-    }
-
-    return '<div class="karte">' +
-      '<p class="karte-titel">Einnahmen<span class="karte-summe">' +
-        geldE(r.einnahmenCent) + '</span></p>' + zeilen + '</div>';
-  },
-
+  /* Nur was aussteht. Das bereits Abgebuchte steckt schon im Band - hier
+     stand es ein zweites Mal, oft fuenfzehn Zeilen lang. Die vollstaendige
+     Liste liegt eine Tippbewegung entfernt im Fixkosten-Blatt. */
   fixkostenKarte: function (monat, r) {
     if (typeof Fixkosten === 'undefined') return '';
     const faellig = (Daten.fixkosten || []).filter((f) =>
@@ -561,43 +504,62 @@ const EinAus = {
     if (!faellig.length) {
       return '<button class="karte karte-knopf leer-karte" data-tu="fixkosten">' +
         '<span class="leer-symbol">📌</span>' +
-        '<span class="leer-text"><b>Fixkosten eintragen</b>' +
-        '<small>Miete, Strom, Handy, Versicherungen</small></span>' +
+        '<span class="leer-text">Fixkosten eintragen</span>' +
         '<span class="chevron">›</span></button>';
     }
 
-    const zeilen = faellig
+    const offen    = faellig.filter((f) => !Fixkosten.schonAbgebucht(f, monat));
+    const gebucht  = faellig.length - offen.length;
+
+    const zeilen = offen
       .sort((a, b) => b.betragCent - a.betragCent)
-      .map((f) => {
-        const gebucht = Fixkosten.schonAbgebucht(f, monat);
-        return '<div class="posten-zeile">' +
-          '<span>' + esc(f.name) + ' ' +
-            (gebucht
-              ? '<small class="gut">✓ abgebucht</small>'
-              : '<small class="leise">steht aus</small>') +
-          '</span>' +
-          '<span class="wert' + (gebucht ? ' leise' : '') + '">' + geldE(f.betragCent) + '</span>' +
-        '</div>';
-      }).join('');
+      .map((f) => '<div class="posten-zeile">' +
+          '<span>' + esc(f.name) + '</span>' +
+          '<span class="wert">' + geld(f.betragCent) + '</span>' +
+        '</div>').join('');
 
     return '<button class="karte karte-knopf" data-tu="fixkosten">' +
-      '<p class="karte-titel">Fixkosten in ' + esc(monatText(monat).split(' ')[0]) +
-        '<span class="karte-pfeil">›</span></p>' +
+      '<p class="karte-titel">Fixkosten' +
+        '<span class="karte-summe">' +
+          (r.fixOffenCent > 0 ? geldE(r.fixOffenCent) + ' offen'
+                              : '<span class="gut">✓ durchgelaufen</span>') +
+        '</span></p>' +
       zeilen +
-      (r.fixOffenCent > 0
-        ? '<div class="quote"><span>steht noch aus</span><b>' + geldE(r.fixOffenCent) + '</b></div>'
-        : '<div class="quote"><span class="gut">✓ alles durchgelaufen</span><b></b></div>') +
+      (gebucht
+        ? '<div class="karte-fuss">' + gebucht + ' bereits abgebucht</div>'
+        : '') +
     '</button>';
   },
 
-  rechnungKarte: function (r) {
-    const zeile = (label, cent, art) =>
-      '<div class="rechnung-zeile' + (art ? ' ' + art : '') + '">' +
-        '<span>' + esc(label) + '</span><span class="wert">' + geldE(cent) + '</span></div>';
+  /* Die Nachvollziehbarkeit der Zahl. Sie wird einmal beim Kennenlernen
+     gelesen und danach selten - deshalb liegt sie zugeklappt da und nicht
+     als halber Schirm voller Zeilen. */
+  rechnung: function (monat, r) {
+    if (!this.detailOffen) {
+      return '<button class="detail-zeile" data-tu="rechnung-mehr">' +
+        'Rechnung im Detail<span class="chevron">›</span></button>';
+    }
+
+    // Die Bezeichnung darf ausgezeichnetes HTML enthalten - der Aufrufer
+    // maskiert selbst, was aus den Daten kommt.
+    const zeile = (labelHtml, cent) =>
+      '<div class="rechnung-zeile"><span>' + labelHtml + '</span>' +
+        '<span class="wert">' + geld(cent) + '</span></div>';
+
+    // Der Gehaltsstand steht an der Gehaltszeile selbst. Vorher stand er in
+    // einer eigenen Karte darueber - und die Zeile "Gehalt" danach ein
+    // zweites Mal.
+    const g = Monatsrechnung.gehalt(monat);
+    const gehaltLabel = g.da
+      ? 'Gehalt <small class="gut">✓ am ' + esc(datumText(g.buchungen[0].datum)) + '</small>'
+      : 'Gehalt <small class="leise">noch nicht da</small>';
+
+    const quote = r.einnahmenCent > 0 && typeof Fixkosten !== 'undefined'
+      ? Math.round(Fixkosten.monatsSumme() / r.einnahmenCent * 100) : null;
 
     return '<div class="karte">' +
-      '<p class="karte-titel">So entsteht die Zahl</p>' +
-      zeile(r.geschaetzt ? 'Mindestnetto (geschätzt)' : 'Gehalt', r.gehaltCent) +
+      '<p class="karte-titel">Rechnung im Detail</p>' +
+      zeile(gehaltLabel, r.gehaltCent) +
       (r.sonstigeCent > 0 ? zeile('sonstige Einnahmen', r.sonstigeCent) : '') +
       (r.sparrateCent > 0 ? zeile('− Sparrate', -r.sparrateCent) : '') +
       (r.fixBezahltCent > 0 ? zeile('− Fixkosten bezahlt', -r.fixBezahltCent) : '') +
@@ -605,6 +567,10 @@ const EinAus = {
       (r.fixOffenCent > 0 ? zeile('− Fixkosten noch offen', -r.fixOffenCent) : '') +
       '<div class="rechnung-zeile summe"><span>steht dir zur Verfügung</span>' +
         '<span class="wert">' + geldE(r.verfuegbarCent) + '</span></div>' +
+      (quote !== null
+        ? '<div class="quote"><span>Fixkostenquote</span><b>' + quote + ' %</b></div>'
+        : '') +
+      '<button class="mehr-zeile" data-tu="rechnung-mehr">weniger</button>' +
     '</div>';
   }
 };
@@ -638,9 +604,8 @@ const Sparen = {
         '<input type="text" inputmode="decimal" id="sp-rate" ' +
         'value="' + (Daten.einstellungen.sparrateCent ? geld(Daten.einstellungen.sparrateCent) : '') + '" ' +
         'placeholder="0,00">' +
-        '<div class="hinweis" style="margin:7px 0 0;padding:0">Wird auf der Startseite von deinem ' +
-          'verfügbaren Geld abgezogen. Die Stände unten pflegst du getrennt davon – ' +
-          'Keel bucht nichts automatisch um.</div>' +
+        '<div class="hinweis" style="margin:7px 0 0;padding:0">Wird vom verfügbaren Geld ' +
+          'abgezogen. Keel bucht nichts automatisch um.</div>' +
       '</div>' +
 
       '<p class="abschnitt-titel">Notgroschen</p>' +
@@ -654,29 +619,37 @@ const Sparen = {
           '<option value="__neu">＋ Neuen Vermögensposten anlegen</option>' +
         '</select></div>' +
 
-      '<div class="feld-reihe">' +
-        '<div class="feld"><label>Aktueller Stand</label>' +
-          '<input type="text" inputmode="decimal" id="sp-not-ist" ' + (posten ? 'disabled ' : '') +
-          'value="' + (stand ? geld(stand) : '') + '" placeholder="0,00"></div>' +
-        '<div class="feld"><label>Ziel</label>' +
-          '<input type="text" inputmode="decimal" id="sp-not-ziel" ' +
-          'value="' + (n.zielCent ? geld(n.zielCent) : '') + '" placeholder="0,00"></div>' +
-      '</div>' +
-
+      /* Gekoppelt gab es hier frueher ein gesperrtes Eingabefeld, drei Saetze
+         Erklaerung, warum es gesperrt ist, und einen zweiten Knopf, der
+         woanders hinfuehrt. Ein Feld, das erklaeren muss, warum man nicht
+         hineinschreiben darf, ist das falsche Element. Jetzt steht dort eine
+         Zeile, die den Stand zeigt und in den Posten fuehrt. */
       (posten
-        ? '<p class="hinweis" style="margin-top:-4px">Der Stand kommt aus deinem Vermögensposten ' +
-            '<b>' + esc(posten.name) + '</b>. Trag ihn dort ein – hier erscheint er dann von selbst. ' +
-            'So zählt dein Notgroschen genau einmal, nämlich im Vermögen.</p>' +
-          (typeof Vermoegen !== 'undefined'
-            ? '<button class="knopf zweit" id="sp-not-oeffnen">Stand in „' + esc(posten.name) + '" eintragen</button>'
-            : '')
-        : '') +
+        ? '<div class="liste"><button class="listenzeile" id="sp-not-oeffnen">' +
+            '<span class="icon">' + esc(posten.emoji || '🏦') + '</span>' +
+            '<span class="mitte"><span class="haupt">' + esc(posten.name) + '</span>' +
+              '<span class="neben">Stand hier eintragen</span></span>' +
+            '<span class="rechts mono">' + geld(stand) + '</span>' +
+            '<span class="chevron">›</span>' +
+          '</button></div>' +
+          '<div class="feld"><label>Ziel</label>' +
+            '<input type="text" inputmode="decimal" id="sp-not-ziel" ' +
+            'value="' + (n.zielCent ? geld(n.zielCent) : '') + '" placeholder="0,00"></div>'
+        : '<div class="feld-reihe">' +
+            '<div class="feld"><label>Aktueller Stand</label>' +
+              '<input type="text" inputmode="decimal" id="sp-not-ist" ' +
+              'value="' + (stand ? geld(stand) : '') + '" placeholder="0,00"></div>' +
+            '<div class="feld"><label>Ziel</label>' +
+              '<input type="text" inputmode="decimal" id="sp-not-ziel" ' +
+              'value="' + (n.zielCent ? geld(n.zielCent) : '') + '" placeholder="0,00"></div>' +
+          '</div>') +
 
+      // Kein Ratgebertext, sondern eine Zeile: der Wert und der Massstab,
+      // an dem man ihn misst. Ohne Daten steht dort nichts.
       (fix > 0 && stand > 0
-        ? '<p class="hinweis" style="margin-top:-4px">Dein Polster deckt derzeit <b>' +
-          (stand / fix).toFixed(1).replace('.', ',') + ' Monate</b> deiner Fixkosten. ' +
-          'Als Faustregel gelten drei bis sechs.</p>'
-        : '<p class="hinweis" style="margin-top:-4px">Üblich sind drei bis sechs Monatsausgaben.</p>') +
+        ? '<p class="hinweis" style="margin-top:-4px">Deckt ' +
+          (stand / fix).toFixed(1).replace('.', ',') + ' Monate Fixkosten · empfohlen 3–6</p>'
+        : '') +
 
       '<p class="abschnitt-titel">Sparziele</p>' +
       ((Daten.sparziele || []).length
@@ -697,18 +670,23 @@ const Sparen = {
 
     const merke = () => {
       Daten.einstellungen.sparrateCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-rate').value) || 0);
-      // Bei gekoppeltem Notgroschen gehoert das Feld dem Vermoegensposten -
-      // von hier aus wird es nicht ueberschrieben.
-      if (!Notgroschen.gekoppelt()) {
-        Daten.notgroschen.standCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-not-ist').value) || 0);
+      // Bei gekoppeltem Notgroschen gehoert der Stand dem Vermoegensposten -
+      // von hier aus wird er nicht ueberschrieben, das Feld gibt es dann gar nicht.
+      const istFeld = koerper.querySelector('#sp-not-ist');
+      if (!Notgroschen.gekoppelt() && istFeld) {
+        Daten.notgroschen.standCent = Math.abs(CSVLeser.zuCent(istFeld.value) || 0);
       }
       Daten.notgroschen.zielCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#sp-not-ziel').value) || 0);
       sichern();
       UI.zeichne();
     };
 
-    ['#sp-rate', '#sp-not-ist', '#sp-not-ziel'].forEach((s) =>
-      koerper.querySelector(s).addEventListener('change', merke));
+    // "#sp-not-ist" gibt es nur ungekoppelt - gekoppelt steht dort eine Zeile
+    // statt eines Feldes.
+    ['#sp-rate', '#sp-not-ist', '#sp-not-ziel'].forEach((s) => {
+      const feld = koerper.querySelector(s);
+      if (feld) feld.addEventListener('change', merke);
+    });
 
     koerper.querySelector('#sp-not-vm').addEventListener('change', (e) => {
       const wahl = e.target.value;
@@ -839,28 +817,23 @@ const Einstellungen = {
         const e = Daten.einstellungen;
 
         koerper.innerHTML =
-          '<div class="feld"><label>Wie sollen wir dich nennen?</label>' +
-            '<input type="text" id="es-name" value="' + esc(e.name) + '" ' +
-            'placeholder="Dein Vorname" autocomplete="off" enterkeyhint="done">' +
-            '<div class="hinweis" style="margin:7px 0 0;padding:0">Erscheint als Begrüßung ' +
-              'auf der Startseite.</div></div>' +
-
-          '<p class="abschnitt-titel">Einkommen</p>' +
           '<div class="feld"><label>Mindestnetto pro Monat</label>' +
             '<input type="text" inputmode="decimal" id="es-netto" ' +
             'value="' + (e.mindestnettoCent ? geld(e.mindestnettoCent) : '') + '" placeholder="0,00">' +
-            '<div class="hinweis" style="margin:7px 0 0;padding:0">Der Betrag, auf den du dich ' +
-              'sicher verlassen kannst. Solange dein Gehalt noch nicht eingegangen ist, rechnet ' +
-              'Keel damit. Kommt mehr, wird der echte Betrag verwendet.</div></div>' +
+            '<div class="hinweis" style="margin:7px 0 0;padding:0">Womit Keel rechnet, ' +
+              'solange das Gehalt noch nicht da ist.</div></div>' +
 
+          // Frueher hiess der Schalter "Gehalt gilt fuer den Folgemonat" und
+          // brauchte darunter eine Unterzeile und einen vierzeiligen Absatz mit
+          // Beispiel, um verstanden zu werden. Jetzt nennt er die Regel selbst.
           '<div class="schalter-zeile" style="margin-bottom:15px">' +
-            '<div class="txt">Gehalt gilt für den Folgemonat' +
-              '<small>Zahlung in der zweiten Monatshälfte zählt zum nächsten Monat</small></div>' +
+            '<div class="txt">Gehalt ab dem 16. zählt für den nächsten Monat</div>' +
             '<div class="schalter' + (e.gehaltVerschieben !== false ? ' an' : '') + '" id="es-schieben"></div>' +
           '</div>' +
-          '<p class="hinweis" style="margin-top:-4px">Beispiel: Gehalt am 28.03. gehört zum April. ' +
-            'Kommt es verspätet erst am 02.04., zählt es ebenfalls für April. Damit das greift, ' +
-            'muss die Buchung der Kategorie <b>💼 Gehalt</b> zugeordnet sein.</p>' +
+          // Keine Erklaerung, sondern eine Bedingung: ohne diese Kategorie
+          // greift die Regel nicht.
+          '<p class="hinweis" style="margin-top:-4px">Gilt für Buchungen der Kategorie ' +
+            '<b>💼 Gehalt</b>.</p>' +
 
           '<button class="knopf" id="es-speichern">Speichern</button>' +
           '<div style="height:20px"></div>';
@@ -871,7 +844,6 @@ const Einstellungen = {
         });
 
         koerper.querySelector('#es-speichern').addEventListener('click', () => {
-          e.name = koerper.querySelector('#es-name').value.trim();
           e.mindestnettoCent = Math.abs(CSVLeser.zuCent(koerper.querySelector('#es-netto').value) || 0);
           sichern();
           Blatt.schliessen();

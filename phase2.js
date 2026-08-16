@@ -360,9 +360,10 @@ const Fixkosten = {
           : '') +
       '</div>' +
       '<div class="liste">' + zeilen + '</div>' +
-      '<p class="hinweis">Fixkosten erzeugen keine Buchungen – deine echten Abbuchungen ' +
-        'kommen über den CSV-Import. Keel gleicht nur ab, was diesen Monat schon ' +
-        'durchgelaufen ist (✅).</p>' +
+      // Der Satz verhindert ein falsches Modell ("eintragen = gebucht") und
+      // bleibt deshalb - aber als eine Zeile statt als drei Saetze.
+      '<p class="hinweis">Ein Posten hier erzeugt keine Buchung – Keel hakt ihn ab, ' +
+        'sobald die echte Abbuchung auftaucht.</p>' +
       '<div style="height:12px"></div>';
 
     koerper.querySelectorAll('[data-fk]').forEach((b) =>
@@ -422,8 +423,10 @@ const Fixkosten = {
             '<div class="hinweis" style="margin:7px 0 0;padding:0">Steht hier ein Name, hakt Keel ' +
               'den Posten ab, sobald eine passende Buchung im Monat auftaucht.</div></div>' +
 
+          // "Aktiv" allein sagte nicht, was es bewirkt - dafuer stand die
+          // Erklaerung darunter. Jetzt sagt die Beschriftung es selbst.
           '<div class="schalter-zeile" style="margin-bottom:15px">' +
-            '<div class="txt">Aktiv<small>Pausierte Posten zählen nicht in die Monatssumme</small></div>' +
+            '<div class="txt">Zählt in die Monatssumme</div>' +
             '<div class="schalter' + (z.aktiv !== false ? ' an' : '') + '" id="fk-aktiv"></div>' +
           '</div>' +
 
@@ -557,8 +560,8 @@ const Budgets = {
           '<div class="leise" style="font-size:12.5px;margin-top:6px">' +
             geld(gesamtIst) + ' € von ' + geld(gesamtGrenze) + ' € verbraucht</div>' +
         '</div>'
-      : '<p class="hinweis" style="margin-top:0">Setz für die Kategorien ein Monatsbudget, ' +
-        'bei denen du dich leicht verschätzt. Kategorien ohne Budget bleiben unbeschränkt.</p>';
+      : '<p class="hinweis" style="margin-top:0">Ohne Budget bleibt eine Kategorie ' +
+        'unbeschränkt.</p>';
 
     const zeile = (k) => {
       const grenze = this.fuer(k.id);
@@ -591,9 +594,8 @@ const Budgets = {
     koerper.innerHTML = kopf +
       '<p class="abschnitt-titel">Monatsbudget je Kategorie</p>' +
       kategorienNach('ausgabe').map(zeile).join('') +
-      '<p class="hinweis">Die Warnung springt bei 80 % auf „wird eng" und bei ' +
-        'Überschreitung auf „überschritten". Farbe, Symbol und Wort sagen dasselbe – ' +
-        'du musst dich nie auf die Farbe allein verlassen.</p>' +
+      // Der Absatz beschrieb einen Farbcode, den die Zeilen darueber bereits
+      // in Farbe, Symbol UND Wort zeigen. Wer ihn liest, hat ihn schon gesehen.
       '<div style="height:12px"></div>';
 
     koerper.querySelectorAll('[data-bf]').forEach((feld) => {
@@ -748,9 +750,11 @@ const Vermoegen = {
 
       diagramm +
       '<p class="abschnitt-titel">Posten</p>' +
+      // "Tippe einen Posten an" beschreibt, was ein Chevron ohnehin anbietet.
+      // Uebrig bleibt der Teil, den man nicht sieht: dass Staende sich sammeln.
       '<div class="liste">' + zeilen + '</div>' +
-      '<p class="hinweis">Tippe einen Posten an, um einen neuen Stand einzutragen. ' +
-        'Jeder Eintrag bleibt erhalten – daraus entsteht der Verlauf.</p>' +
+      '<p class="hinweis">Jeder eingetragene Stand bleibt erhalten – daraus ' +
+        'entsteht der Verlauf.</p>' +
       '<div style="height:12px"></div>';
 
     Diagramm.verdrahte(koerper);
@@ -779,8 +783,8 @@ const Vermoegen = {
 
       koerper.innerHTML =
         (z.id && z.id === Daten.notgroschen.vermoegenId
-          ? '<p class="hinweis" style="margin-top:0">🛟 Dieser Posten ist dein <b>Notgroschen</b>. ' +
-            'Der Stand, den du hier einträgst, steht auch auf der Startseite.</p>'
+          ? '<p class="hinweis" style="margin-top:0">🛟 Dieser Posten ist dein Notgroschen – ' +
+            'sein Stand steht auch auf der Startseite.</p>'
           : '') +
 
         '<div class="feld"><label>Bezeichnung</label>' +

@@ -19,9 +19,23 @@
   --minus:         #F87171;
   --warn:          #FBBF24;
 
+  /* ---- Drei Stufen, mehr nicht ----------------------------------
+     primaer   die eine Zahl bzw. Aktion, die den Schirm traegt
+     sekundaer alles, was man tatsaechlich liest
+     meta      Beiwerk: Labels, Staende, Fusszeilen - nie tragend
+
+     Wer eine vierte Groesse braucht, braucht in Wahrheit weniger
+     Elemente. Neue Schirme greifen nur auf diese drei zu. */
+  --t-primaer:   62px;
+  --t-sekundaer: 15px;
+  --t-meta:      12.5px;
+
   --r-s: 10px;
   --r-m: 16px;
   --r-l: 22px;
+
+  /* Kleinste Trefferflaeche fuer alles Antippbare (Apple HIG). */
+  --tipp: 44px;
 
   --nav-hoehe: 62px;
 
@@ -104,17 +118,9 @@ select {
   padding: calc(var(--sicher-oben) + 10px) 16px 10px;
   margin-top: calc(-1 * var(--sicher-oben));
 }
-.kopf h1 {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.4px;
-}
-.kopf .unterzeile {
-  color: var(--text-leise);
-  font-size: 13px;
-  margin-top: 2px;
-}
+/* Es gibt keine Ueberschriften mehr in den Kopfzeilen: der Reiter unten
+   sagt, wo man ist, und die Unterschirme tragen ihren Namen in der
+   Listenkopfzeile mit. Damit ist die 26px-Stufe aus der App verschwunden. */
 
 .inhalt { padding: 16px; }
 
@@ -127,8 +133,8 @@ select {
   margin-top: 12px;
 }
 .monatswahl button.pfeil {
-  width: 40px; height: 40px;
-  flex: 0 0 40px;
+  width: var(--tipp); height: var(--tipp);
+  flex: 0 0 var(--tipp);
   border-radius: 12px;
   background: var(--karte);
   display: flex; align-items: center; justify-content: center;
@@ -138,9 +144,9 @@ select {
 .monatswahl .aktuell {
   flex: 1;
   text-align: center;
-  font-size: 17px;
+  font-size: var(--t-sekundaer);
   font-weight: 600;
-  padding: 9px 0;
+  min-height: var(--tipp);
   border-radius: 12px;
   background: var(--karte);
 }
@@ -155,22 +161,17 @@ select {
   margin-bottom: 14px;
 }
 .karte-titel {
-  font-size: 12px;
+  font-size: var(--t-meta);
   font-weight: 700;
   letter-spacing: 0.9px;
   text-transform: uppercase;
   color: var(--text-sehrleise);
-  margin: 0 0 12px;
+  margin: 0 0 14px;
 }
 
-.saldo-karte { text-align: center; padding: 22px 16px 20px; }
-.saldo-wert {
-  font-size: 42px;
-  font-weight: 700;
-  letter-spacing: -1.4px;
-  line-height: 1.1;
-}
-.saldo-label { color: var(--text-leise); font-size: 13px; margin-top: 6px; }
+/* Beschriftung unter einer Kennzahl im Blatt (".hero-wert"). Die frueheren
+   Klassen ".saldo-karte" und ".saldo-wert" waren tote Reste. */
+.saldo-label { color: var(--text-leise); font-size: var(--t-meta); margin-top: 6px; }
 
 .zwei-spalten { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .mini-karte {
@@ -179,13 +180,12 @@ select {
   padding: 14px;
 }
 .mini-karte .label {
-  font-size: 12px; color: var(--text-leise);
+  font-size: var(--t-meta); color: var(--text-sehrleise);
   display: flex; align-items: center; gap: 5px;
 }
 .mini-karte .wert {
-  font-size: 21px; font-weight: 700; margin-top: 5px;
+  font-size: var(--t-sekundaer); font-weight: 700; margin-top: 4px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
 }
 
 .plus  { color: var(--plus); }
@@ -194,25 +194,30 @@ select {
 
 /* ---------- Kategorie-Auswertung ---------- */
 
-.kat-zeile { margin-bottom: 15px; }
-.kat-zeile:last-child { margin-bottom: 0; }
+/* Kein margin-bottom, sondern Abstand nur zwischen den Zeilen: sonst
+   haengt unter der letzten Luft, egal was danach kommt. */
+.kat-zeile + .kat-zeile { margin-top: 16px; }
 .kat-kopf {
   display: flex; align-items: center; gap: 9px;
-  font-size: 15px; margin-bottom: 7px;
+  font-size: var(--t-sekundaer); margin-bottom: 7px;
 }
 .kat-kopf .emoji { font-size: 17px; }
 .kat-kopf .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kat-kopf .betrag { font-weight: 600; font-variant-numeric: tabular-nums; }
-.kat-kopf .anteil { color: var(--text-sehrleise); font-size: 12px; min-width: 38px; text-align: right; }
+.kat-kopf .anteil { color: var(--text-sehrleise); font-size: var(--t-meta); min-width: 38px; text-align: right; }
 .balken { height: 7px; background: var(--karte-hell); border-radius: 4px; overflow: hidden; }
 .balken > i { display: block; height: 100%; border-radius: 4px; background: var(--akzent); }
 
 /* ---------- Buchungsliste ---------- */
 
+/* Der Kopf ueber der Liste: welche Liste, wie viele, wie viel. Gleiches
+   Muster wie die Kartentitel der uebrigen App. */
+.listen-kopf { margin-top: 4px; }
+
 .tag-kopf {
   display: flex; justify-content: space-between; align-items: baseline;
   padding: 16px 4px 7px;
-  font-size: 13px;
+  font-size: var(--t-meta);
   color: var(--text-leise);
   font-weight: 600;
 }
@@ -222,6 +227,7 @@ select {
   display: flex; align-items: center; gap: 12px;
   background: var(--karte);
   border-radius: 14px;
+  min-height: var(--tipp);
   padding: 12px 14px;
   margin-bottom: 7px;
   width: 100%;
@@ -237,15 +243,16 @@ select {
 }
 .buchung .mitte { flex: 1; min-width: 0; }
 .buchung .titel {
-  font-size: 15.5px; font-weight: 500;
+  font-size: var(--t-sekundaer); font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.buchung .titel .wdh { font-size: 11px; }
 .buchung .sub {
-  font-size: 12.5px; color: var(--text-sehrleise); margin-top: 1px;
+  font-size: var(--t-meta); color: var(--text-sehrleise); margin-top: 1px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .buchung .wert {
-  font-size: 16px; font-weight: 600;
+  font-size: var(--t-sekundaer); font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -254,7 +261,7 @@ select {
   text-align: center;
   color: var(--text-sehrleise);
   padding: 46px 24px;
-  font-size: 14.5px;
+  font-size: var(--t-sekundaer);
   line-height: 1.6;
 }
 .leer-hinweis .gross { font-size: 40px; display: block; margin-bottom: 10px; opacity: 0.5; }
@@ -349,14 +356,20 @@ select {
   .blatt, .blatt-hinter, .toast { animation: none; }
 }
 
+/* Der Kopf steht fest, der Koerper darunter scrollt - "Sichern" oben
+   rechts ist damit immer erreichbar, auch ohne zu scrollen. Das schmalere
+   Polster gleicht die groesseren Knoepfe aus: der Kopf bleibt gleich hoch. */
 .blatt-kopf {
   display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px;
+  padding: 5px 16px;
   border-bottom: 1px solid var(--linie);
   flex: 0 0 auto;
 }
-.blatt-kopf h2 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; text-align: center; }
-.blatt-kopf button { font-size: 15px; color: var(--akzent); min-width: 62px; padding: 4px 0; }
+.blatt-kopf h2 { margin: 0; font-size: var(--t-sekundaer); font-weight: 600; flex: 1; text-align: center; }
+.blatt-kopf button {
+  font-size: var(--t-sekundaer); color: var(--akzent);
+  min-width: 62px; min-height: var(--tipp);
+}
 .blatt-kopf button.links { text-align: left; }
 .blatt-kopf button.rechts { text-align: right; font-weight: 600; }
 .blatt-kopf button:disabled { color: var(--text-sehrleise); }
@@ -374,8 +387,9 @@ select {
   margin-bottom: 18px;
 }
 .typ-schalter button {
-  padding: 10px; border-radius: 9px;
-  font-size: 15px; font-weight: 600;
+  min-height: var(--tipp);
+  border-radius: 9px;
+  font-size: var(--t-sekundaer); font-weight: 600;
   color: var(--text-leise);
 }
 .typ-schalter button.an { background: var(--karte-hell); color: var(--text); }
@@ -384,12 +398,13 @@ select {
 
 .betrag-anzeige {
   text-align: center;
-  font-size: 52px;
+  font-size: var(--t-primaer);
   font-weight: 700;
   letter-spacing: -2px;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
   padding: 6px 0 4px;
-  min-height: 66px;
+  min-height: 78px;
 }
 .betrag-anzeige.aus { color: var(--minus); }
 .betrag-anzeige.ein { color: var(--plus); }
@@ -433,6 +448,7 @@ select {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
+  margin-bottom: 4px;
 }
 .kat-kachel {
   background: var(--karte);
@@ -462,7 +478,7 @@ select {
 .feld { margin-bottom: 15px; }
 .feld > label {
   display: block;
-  font-size: 12px; font-weight: 600;
+  font-size: var(--t-meta); font-weight: 600;
   letter-spacing: 0.5px; text-transform: uppercase;
   color: var(--text-sehrleise);
   margin-bottom: 7px;
@@ -471,9 +487,10 @@ select {
 
 .knopf {
   display: block; width: 100%;
+  min-height: 54px;
   padding: 15px;
   border-radius: 14px;
-  font-size: 16.5px; font-weight: 600;
+  font-size: var(--t-sekundaer); font-weight: 600;
   text-align: center;
   background: var(--akzent);
   color: #04231F;
@@ -491,8 +508,8 @@ select {
   border-radius: 12px;
   padding: 13px 14px;
 }
-.schalter-zeile .txt { flex: 1; }
-.schalter-zeile .txt small { display: block; color: var(--text-sehrleise); font-size: 12px; margin-top: 2px; }
+.schalter-zeile .txt { flex: 1; font-size: var(--t-sekundaer); }
+.schalter-zeile .txt small { display: block; color: var(--text-sehrleise); font-size: var(--t-meta); margin-top: 2px; }
 
 .schalter {
   position: relative; flex: 0 0 50px;
@@ -500,6 +517,14 @@ select {
   border-radius: 15px;
   background: var(--linie);
   transition: background 0.16s;
+}
+/* Der Schalter sieht 30px hoch aus, laesst sich aber auf 44px treffen:
+   die unsichtbare Flaeche liegt darueber und darunter. */
+.schalter::before {
+  content: ''; position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: var(--tipp);
+  transform: translateY(-50%);
 }
 .schalter::after {
   content: ''; position: absolute;
@@ -516,7 +541,8 @@ select {
 .liste { background: var(--karte); border-radius: var(--r-m); overflow: hidden; margin-bottom: 14px; }
 .listenzeile {
   display: flex; align-items: center; gap: 13px;
-  padding: 14px 16px;
+  min-height: var(--tipp);
+  padding: 13px 16px;
   width: 100%; text-align: left;
   border-bottom: 1px solid var(--linie);
 }
@@ -524,21 +550,34 @@ select {
 .listenzeile:active { background: var(--karte-hell); }
 .listenzeile .icon { font-size: 20px; width: 26px; text-align: center; flex: 0 0 26px; }
 .listenzeile .mitte { flex: 1; min-width: 0; }
-.listenzeile .mitte .haupt { font-size: 15.5px; }
-.listenzeile .mitte .neben { font-size: 12.5px; color: var(--text-sehrleise); margin-top: 1px; }
-.listenzeile .rechts { color: var(--text-sehrleise); font-size: 14px; font-variant-numeric: tabular-nums; }
+.listenzeile .mitte .haupt { font-size: var(--t-sekundaer); }
+/* Nur fuer Zustaende da ("zuletzt gesichert vor 9 Tagen"), nie fuer
+   Beschreibungen dessen, was der Titel schon sagt. */
+.listenzeile .mitte .neben { font-size: var(--t-meta); color: var(--text-sehrleise); margin-top: 1px; }
+.listenzeile .rechts { color: var(--text-sehrleise); font-size: var(--t-meta); font-variant-numeric: tabular-nums; }
 .listenzeile .chevron { color: var(--text-sehrleise); font-size: 19px; }
 
 .abschnitt-titel {
-  font-size: 12px; font-weight: 700;
+  font-size: var(--t-meta); font-weight: 700;
   letter-spacing: 0.9px; text-transform: uppercase;
   color: var(--text-sehrleise);
-  margin: 22px 4px 9px;
+  margin: 24px 4px 9px;
 }
 .abschnitt-titel:first-child { margin-top: 4px; }
 
+/* "Mehr" und "Vermögen" haben keine Kopfzeile mehr - der Rand oben kommt
+   von #app (Safe Area). */
+.mehr-inhalt { padding-top: 8px; }
+.vermoegen-inhalt { padding-top: 8px; }
+
+/* Die Zeile, mit der eine Liste sich verlaengern laesst. Sie sitzt am Ende
+   der Liste statt als eigener Knopf darunter - dort schaut man ohnehin hin,
+   wenn man die Liste zu Ende gelesen hat. */
+.listenzeile.zufuegen .icon { color: var(--akzent); font-size: 19px; font-weight: 600; }
+.listenzeile.zufuegen .haupt { color: var(--akzent); }
+
 .hinweis {
-  font-size: 12.5px; color: var(--text-sehrleise);
+  font-size: var(--t-meta); color: var(--text-sehrleise);
   padding: 0 4px; margin: -6px 0 16px; line-height: 1.55;
 }
 
@@ -572,16 +611,16 @@ select {
 }
 .haken.an { background: var(--akzent); border-color: var(--akzent); color: #04231F; }
 .import-zeile .mitte { flex: 1; min-width: 0; }
-.import-zeile .titel { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.import-zeile .sub { font-size: 12px; color: var(--text-sehrleise); margin-top: 2px; }
+.import-zeile .titel { font-size: var(--t-sekundaer); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.import-zeile .sub { font-size: var(--t-meta); color: var(--text-sehrleise); margin-top: 2px; }
 .import-zeile .katknopf {
-  font-size: 12px; padding: 5px 9px;
+  font-size: var(--t-meta); padding: 7px 10px;
   background: var(--karte-hell); border-radius: 8px;
   color: var(--text-leise); white-space: nowrap;
   max-width: 118px; overflow: hidden; text-overflow: ellipsis;
 }
 .import-zeile .katknopf.gelernt { color: var(--akzent); }
-.import-zeile .wert { font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.import-zeile .wert { font-size: var(--t-sekundaer); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .datei-knopf {
   display: block; text-align: center;
@@ -589,7 +628,7 @@ select {
   border-radius: var(--r-m);
   padding: 30px 18px;
   color: var(--text-leise);
-  font-size: 14.5px;
+  font-size: var(--t-sekundaer);
   line-height: 1.6;
   pointer-events: none;   /* der Tipp geht an das darueberliegende Dateifeld */
 }
@@ -613,7 +652,7 @@ select {
 }
 
 .datei-status {
-  font-size: 13px;
+  font-size: var(--t-meta);
   text-align: center;
   padding: 12px 6px 0;
   line-height: 1.55;
@@ -627,7 +666,7 @@ select {
   width: 100%;
   min-height: 190px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-size: var(--t-meta);
   line-height: 1.5;
   resize: vertical;
 }
@@ -643,7 +682,7 @@ select {
   border: 1px solid var(--linie);
   border-radius: 13px;
   padding: 13px 16px;
-  font-size: 14.5px;
+  font-size: var(--t-sekundaer);
   text-align: center;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   animation: toast-rein 0.22s ease;
@@ -662,9 +701,8 @@ select {
 .marke {
   text-align: center;
   color: var(--text-sehrleise);
-  font-size: 11.5px;
+  font-size: var(--t-meta);
   padding: 26px 0 6px;
-  line-height: 1.7;
 }
 
 /* ============================================================
@@ -674,8 +712,11 @@ select {
 /* Große Kennzahlen benutzen die normalen Ziffernbreiten.
    Tabellenziffern lassen eine "121" bei dieser Größe locker
    auseinanderfallen — die gehören in Spalten, nicht in Schlagzahlen. */
+/* Die Kennzahl eines Blattes. Sie benutzt dieselbe primaere Stufe wie die
+   Schirme, nur die schmale Variante: in einem Blatt stehen oft lange
+   Summen, und darunter kommt noch Inhalt. */
 .hero-wert {
-  font-size: 40px;
+  font-size: calc(var(--t-primaer) * 0.66);
   font-weight: 700;
   letter-spacing: -1.2px;
   line-height: 1.1;
@@ -693,11 +734,11 @@ select {
 
 .budget-kopf {
   display: flex; align-items: baseline; justify-content: space-between;
-  gap: 10px; font-size: 15px; margin-bottom: 12px;
+  gap: 10px; font-size: var(--t-sekundaer); margin-bottom: 12px;
 }
-.budget-kopf .leise { font-size: 12.5px; }
+.budget-kopf .leise { font-size: var(--t-meta); }
 
-.budget-marke { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.budget-marke { font-size: var(--t-meta); font-weight: 600; white-space: nowrap; }
 .budget-symbol { font-weight: 700; }
 
 .budget-zeile {
@@ -707,9 +748,9 @@ select {
   margin-bottom: 10px;
 }
 .budget-zeile .balken { margin-bottom: 7px; }
-.budget-status { font-size: 12px; margin-bottom: 10px; font-weight: 600; }
+.budget-status { font-size: var(--t-meta); margin-bottom: 10px; font-weight: 600; }
 .budget-status .leise { font-weight: 400; }
-.budget-feld { font-size: 15px; padding: 10px 12px; }
+.budget-feld { font-size: 16px; padding: 10px 12px; }
 
 /* Auswahl in Zeilen (Rhythmus, Vermögensart) */
 .wahl-gitter {
@@ -721,7 +762,7 @@ select {
   padding: 12px 8px;
   border-radius: 11px;
   background: var(--karte);
-  font-size: 13.5px;
+  font-size: var(--t-sekundaer);
   border: 1.5px solid transparent;
   color: var(--text-leise);
 }
@@ -736,7 +777,7 @@ select {
 /* Zins/Tilgung-Aufteilung */
 .split-zeile {
   display: flex; justify-content: space-between;
-  font-size: 14px; padding: 3px 0;
+  font-size: var(--t-sekundaer); padding: 3px 0;
 }
 .split-balken {
   height: 7px;
@@ -752,7 +793,7 @@ select {
   background: var(--karte);
   border-radius: var(--r-m);
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--t-meta);
 }
 .tabelle-kopf, .tabelle-zeile {
   display: grid;
@@ -762,7 +803,7 @@ select {
   align-items: baseline;
 }
 .tabelle-kopf {
-  font-size: 11px; font-weight: 700;
+  font-size: var(--t-meta); font-weight: 700;
   letter-spacing: 0.5px; text-transform: uppercase;
   color: var(--text-sehrleise);
   border-bottom: 1px solid var(--linie);
@@ -783,6 +824,9 @@ select {
   overflow: visible;
   touch-action: pan-y;   /* senkrecht scrollen bleibt möglich */
 }
+/* Achsenbeschriftung bleibt bewusst unter der Meta-Stufe: sie ist Teil des
+   Diagramms, kein Text auf der Seite. Groesser wuerde sie sich auf der
+   schmalen Achse gegenseitig ueberlappen. */
 .dg-achse {
   font-size: 10px;
   fill: var(--text-sehrleise);
@@ -790,13 +834,13 @@ select {
   font-family: inherit;
 }
 .dg-endwert {
-  font-size: 11.5px;
+  font-size: var(--t-meta);
   font-weight: 600;
   fill: var(--text);      /* Text trägt Textfarbe, nie die Datenfarbe */
   font-family: inherit;
 }
 .dg-ablesung {
-  font-size: 12px;
+  font-size: var(--t-meta);
   color: var(--text-leise);
   text-align: center;
   min-height: 17px;
@@ -819,196 +863,263 @@ select {
   --dg-blau-tief: #0072DC;
 }
 
-.start-kopf {
-  padding: calc(var(--sicher-oben) + 16px) 16px 6px;
-  margin-top: calc(-1 * var(--sicher-oben));
-}
-.gruss {
-  font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
-  text-wrap: balance;
-}
-.gruss-unter { font-size: 12.5px; color: var(--text-sehrleise); margin-top: 1px; }
+/* Die Startseite hat keine Kopfzeile mehr. Die grosse Zahl ist das
+   Erste auf dem Schirm - der Rand oben kommt von #app (Safe Area). */
+.start-inhalt { padding-top: 8px; }
 
-/* Große Kennzahlen: normale Ziffernbreiten. Tabellenziffern lassen
-   eine "121" bei dieser Größe locker auseinanderfallen. */
-.hero { text-align: center; padding: 24px 16px 22px; }
+/* Die eine Zahl. Sie steht frei, nicht in einer Karte: eine Flaeche
+   um sie herum wuerde sie zu einem Element unter anderen machen.
+   Normale Ziffernbreiten - Tabellenziffern lassen eine "121" bei
+   dieser Groesse locker auseinanderfallen. */
+.hero { text-align: center; padding: 26px 8px 20px; }
 .hero-zahl {
-  font-size: 44px; font-weight: 700;
-  letter-spacing: -1.6px; line-height: 1.05;
+  font-size: var(--t-primaer); font-weight: 700;
+  letter-spacing: -2.4px; line-height: 1;
 }
 .hero-zahl.warn  { color: var(--warn); }
 .hero-zahl.minus { color: var(--minus); }
-.hero-unter { color: var(--text-leise); font-size: 13.5px; margin-top: 7px; }
-.hero-tage  { color: var(--text-sehrleise); font-size: 12px; margin-top: 3px; }
-.hero-schaetzung {
-  color: var(--text-sehrleise); font-size: 11.5px; margin-top: 10px;
-  padding-top: 9px; border-top: 1px solid var(--linie);
+
+/* Lange Betraege duerfen nicht umbrechen und nicht ueber den Rand laufen.
+   Es bleibt dieselbe Stufe, nur an die Laenge angepasst - keine neue
+   Hierarchieebene, sondern dieselbe in schmal. */
+.hero-zahl.mittel, .betrag-anzeige.mittel { font-size: calc(var(--t-primaer) * 0.80); }
+.hero-zahl.klein,  .betrag-anzeige.klein  { font-size: calc(var(--t-primaer) * 0.66); }
+.hero-tage {
+  color: var(--text-leise); font-size: var(--t-meta); margin-top: 10px;
 }
 
 /* ---------- Erfassungs-Zaehler ----------
-   Sitzt unter der grossen Zahl und soll dort nicht mitreden:
+   Eine Zeile unter der grossen Zahl. Sie soll dort nicht mitreden:
    klein, ruhig, ohne Warnfarbe. */
 .zaehler {
-  margin-top: 14px; padding-top: 12px;
-  border-top: 1px solid var(--linie);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
+  margin-bottom: 20px;
 }
 .zaehler-text {
-  font-size: 12.5px; color: var(--text-leise);
+  font-size: var(--t-meta); color: var(--text-sehrleise);
   font-variant-numeric: tabular-nums;
 }
-.zaehler-zahl { font-weight: 700; color: var(--text); }
+.zaehler-zahl { font-weight: 700; color: var(--text-leise); }
 .zaehler-zahl.gut { color: var(--plus); }
 
-.zaehler-punkte {
-  display: grid;
-  grid-template-columns: repeat(30, 1fr);
-  gap: 3px;
-  margin-top: 9px;
-}
-.zaehler-punkte > i {
-  display: block; width: 6px; height: 6px; margin: 0 auto;
-  border-radius: 50%;
-  background: var(--karte-hell);
-  box-shadow: inset 0 0 0 1px var(--linie);
-}
-.zaehler-punkte > i.an {
-  background: var(--akzent);
-  box-shadow: none;
-}
-
 .zaehler-knopf {
-  display: block; margin: 12px auto 0;
-  padding: 7px 14px;
-  font-size: 12.5px; color: var(--text-leise);
-  background: var(--karte-hell);
-  border: 1px solid var(--linie);
+  margin-left: auto;
+  min-height: var(--tipp);
+  padding: 0 16px;
+  font-size: var(--t-meta); color: var(--text-leise);
+  background: var(--karte);
   border-radius: 999px;
 }
-.zaehler-knopf:active { background: var(--linie); }
+.zaehler-knopf:active { background: var(--karte-hell); }
 
-/* Der eine leise Hinweis - Fliesstext, kein Alarm. */
-.hinweis-leise {
-  font-size: 13.5px; line-height: 1.5;
-  color: var(--text-leise); text-align: center;
+/* ---------- Hinweisband ----------
+   Hoechstens eines gleichzeitig. Flach, ohne Farbflaeche, eine Zeile. */
+.band-hinweis {
+  display: flex; align-items: stretch;
+  background: var(--karte);
+  border-radius: var(--r-s);
+  overflow: hidden;
+  margin-bottom: 14px;
 }
+.bh-haupt {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 12px;
+  min-height: var(--tipp);
+  padding: 8px 6px 8px 14px;
+  text-align: left;
+}
+.bh-haupt:active { background: var(--karte-hell); }
+.bh-symbol { font-size: 17px; flex: 0 0 auto; }
+.bh-text {
+  flex: 1; min-width: 0; font-size: var(--t-sekundaer);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bh-zu {
+  flex: 0 0 var(--tipp);
+  color: var(--text-sehrleise);
+  font-size: 15px;
+}
+.bh-zu:active { background: var(--karte-hell); }
 
 .karte-summe {
-  margin-left: auto; font-size: 12px;
+  margin-left: auto; font-size: var(--t-meta);
   color: var(--text-leise); font-variant-numeric: tabular-nums;
   letter-spacing: 0; text-transform: none; font-weight: 600;
 }
 
-/* Sparfortschritt */
-.spar-kopf {
+/* ---------- Ruecklagen ----------
+   Notgroschen und Sparziel in einer Karte, je eine Zeile. Der Balken
+   traegt den Fortschritt allein - Prozentzahl und Restbetrag daneben
+   haetten dasselbe ein zweites und drittes Mal gesagt. */
+.rl-zeile + .rl-zeile { margin-top: 15px; }
+.rl-kopf {
   display: flex; align-items: baseline; justify-content: space-between;
-  gap: 10px; margin-bottom: 9px;
+  gap: 10px; margin-bottom: 7px;
 }
-.spar-stand { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.spar-ziel  { font-size: 12.5px; color: var(--text-leise); font-variant-numeric: tabular-nums; }
-.spar-balken { height: 9px; background: var(--karte-hell); border-radius: 5px; overflow: hidden; }
+.rl-name {
+  font-size: var(--t-sekundaer);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rl-wert {
+  font-size: var(--t-sekundaer); font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.rl-wert small {
+  font-size: var(--t-meta); font-weight: 400; color: var(--text-sehrleise);
+}
+.rl-leer {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
+.rl-leer .rl-name, .rl-leer .rl-wert {
+  color: var(--text-sehrleise); font-weight: 400; font-size: var(--t-meta);
+}
+.rl-weitere {
+  font-size: var(--t-meta); color: var(--text-sehrleise);
+  margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--linie);
+}
+
+.spar-balken { height: 8px; background: var(--karte-hell); border-radius: 4px; overflow: hidden; }
 .spar-balken > i {
-  display: block; height: 100%; border-radius: 5px;
+  display: block; height: 100%; border-radius: 4px;
   background: var(--dg-teal);
   transition: width 0.35s cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) { .spar-balken > i { transition: none; } }
-.spar-fuss {
-  display: flex; justify-content: space-between; gap: 10px;
-  font-size: 12px; color: var(--text-sehrleise); margin-top: 8px;
-}
-.spar-prozent { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-leise); }
-.spar-weitere {
-  font-size: 11.5px; color: var(--text-sehrleise);
-  margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--linie);
-}
 
 /* Leere Karte als Einladung */
 .leer-karte {
   display: flex; align-items: center; gap: 13px;
+  min-height: var(--tipp);
   padding: 16px;
 }
-.leer-symbol { font-size: 24px; flex: 0 0 auto; }
-.leer-text { flex: 1; text-align: left; font-size: 15px; }
+.leer-symbol { font-size: 22px; flex: 0 0 auto; }
+.leer-text { flex: 1; text-align: left; font-size: var(--t-sekundaer); }
 .leer-text small {
   display: block; color: var(--text-sehrleise);
-  font-size: 12.5px; margin-top: 1px;
+  font-size: var(--t-meta); margin-top: 1px;
 }
+
+/* Zeile zum Auf- und Zuklappen laenger Listen */
+.mehr-zeile {
+  display: block; width: 100%;
+  min-height: var(--tipp);
+  margin-top: 4px; padding-top: 12px;
+  border-top: 1px solid var(--linie);
+  font-size: var(--t-meta); color: var(--text-leise);
+  text-align: left;
+}
+.mehr-zeile:active { color: var(--text); }
 
 /* Zeitraum-Umschalter */
 .zeitschalter {
   display: grid; grid-template-columns: repeat(4, 1fr);
   background: var(--karte-hell); border-radius: 10px;
-  padding: 3px; gap: 3px; margin-bottom: 14px;
+  padding: 3px; gap: 3px; margin-bottom: 16px;
 }
 .zeitschalter button {
-  font-size: 12.5px; font-weight: 600;
-  padding: 7px 0; border-radius: 8px;
+  font-size: var(--t-meta); font-weight: 600;
+  min-height: calc(var(--tipp) - 6px);
+  border-radius: 8px;
   color: var(--text-leise);
 }
 .zeitschalter button[aria-pressed="true"] { background: var(--karte); color: var(--text); }
 
 /* ---------- Ein & Aus ---------- */
 
-.band { display: flex; gap: 2px; height: 15px; margin: 2px 0 13px; }
+/* Nur der Monatswaehler in der Kopfzeile. Titel und Unterzeile sind weg:
+   den Titel sagt die Navigationsleiste, die Unterzeile stand identisch
+   als grosse Zahl auf der Startseite. */
+.kopf-schlank { padding-bottom: 12px; }
+.kopf-schlank .monatswahl { margin-top: 0; }
+
+.band { display: flex; gap: 2px; height: 16px; margin: 2px 0 15px; }
 .band > i { display: block; height: 100%; }
 .band > i:first-child { border-radius: 5px 0 0 5px; }
 .band > i:last-child  { border-radius: 0 5px 5px 0; }
 
-.legende { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-.legenden-zeile { display: flex; align-items: center; gap: 9px; }
+.legende { display: flex; flex-direction: column; gap: 10px; font-size: var(--t-sekundaer); }
+.legenden-zeile { display: flex; align-items: center; gap: 10px; }
 .legenden-zeile .punkt { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; }
 .legenden-zeile .name { flex: 1; color: var(--text-leise); }
 .legenden-zeile .wert { font-variant-numeric: tabular-nums; font-weight: 600; }
 
+/* Leise Fusszeile in einer Karte - nur fuer einen Zustand, nie fuer eine
+   Erklaerung. */
+.band-fuss, .karte-fuss {
+  font-size: var(--t-meta); color: var(--text-sehrleise);
+  margin-top: 13px; padding-top: 11px;
+  border-top: 1px solid var(--linie);
+}
+/* Steht nichts darueber (alle Fixkosten durchgelaufen), braucht die
+   Fusszeile auch keine Trennlinie. */
+.karte-titel + .karte-fuss { margin-top: 0; padding-top: 0; border-top: 0; }
+
 .quote {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 13px; margin-top: 14px; padding-top: 12px;
+  font-size: var(--t-meta); margin-top: 14px; padding-top: 12px;
   border-top: 1px solid var(--linie); color: var(--text-leise);
 }
-.quote b { color: var(--text); font-variant-numeric: tabular-nums; font-size: 15px; }
+.quote b { color: var(--text); font-variant-numeric: tabular-nums; font-size: var(--t-sekundaer); }
 
 .posten-zeile {
   display: flex; align-items: baseline; justify-content: space-between;
-  gap: 10px; font-size: 14.5px; padding: 8px 0;
+  gap: 10px; font-size: var(--t-sekundaer); padding: 9px 0;
   text-align: left;
 }
 .posten-zeile + .posten-zeile { border-top: 1px solid var(--linie); }
-.posten-zeile .wert { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.posten-zeile small { font-size: 11.5px; }
+.posten-zeile:first-child { padding-top: 0; }
+.posten-zeile .wert { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+.posten-zeile small { font-size: var(--t-meta); font-weight: 400; }
 .posten-zeile small.gut { color: var(--plus); }
 
 .rechnung-zeile {
   display: flex; justify-content: space-between; gap: 12px;
-  font-size: 14px; padding: 5px 0; color: var(--text-leise);
+  font-size: var(--t-sekundaer); padding: 6px 0; color: var(--text-leise);
 }
 .rechnung-zeile .wert { font-variant-numeric: tabular-nums; color: var(--text); }
 .rechnung-zeile.summe {
-  border-top: 1px solid var(--linie); margin-top: 6px; padding-top: 11px;
-  font-weight: 700; color: var(--text); font-size: 15px;
+  border-top: 1px solid var(--linie); margin-top: 7px; padding-top: 12px;
+  font-weight: 700; color: var(--text);
 }
+
+/* Zugeklappter Bereich: eine Zeile, kein Kartenrahmen. */
+.detail-zeile {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; min-height: var(--tipp);
+  padding: 0 4px; margin-bottom: 14px;
+  font-size: var(--t-meta); color: var(--text-leise);
+  text-align: left;
+}
+.detail-zeile:active { color: var(--text); }
+.detail-zeile .chevron { color: var(--text-sehrleise); font-size: 18px; }
 
 .listen-knopf {
   display: flex; align-items: center; gap: 13px;
   background: var(--karte); border-radius: 14px;
+  min-height: var(--tipp);
   padding: 14px 16px; width: 100%;
   text-align: left; margin-bottom: 10px;
 }
 .listen-knopf:active { background: var(--karte-hell); }
 .listen-knopf .sym { font-size: 19px; }
-.listen-knopf .txt { flex: 1; font-size: 15px; }
+.listen-knopf .txt { flex: 1; font-size: var(--t-sekundaer); }
 .listen-knopf .txt small {
-  display: block; color: var(--text-sehrleise); font-size: 12px; margin-top: 1px;
+  display: block; color: var(--text-sehrleise); font-size: var(--t-meta); margin-top: 1px;
 }
 .listen-knopf .chevron { color: var(--text-sehrleise); font-size: 18px; }
 
 /* Kopfzeile mit Zurück und Plus */
 .kopf-reihe {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
-.zurueck { font-size: 15px; color: var(--akzent); padding: 2px 0; }
+.zurueck {
+  font-size: var(--t-sekundaer); color: var(--akzent);
+  min-height: var(--tipp); padding-right: 8px;
+}
 .kopf-plus {
-  width: 34px; height: 34px; border-radius: 11px;
+  width: var(--tipp); height: var(--tipp); border-radius: 13px;
   background: var(--karte); color: var(--akzent);
   font-size: 22px; font-weight: 300;
   display: flex; align-items: center; justify-content: center;
@@ -1027,13 +1138,13 @@ select {
   background: var(--karte);
   border-radius: var(--r-s);
   padding: 12px 14px;
-  font-size: 13.5px; line-height: 1.45;
+  font-size: var(--t-sekundaer); line-height: 1.45;
   color: var(--text-leise);
 }
 .kat-zaehler b { color: var(--text); font-variant-numeric: tabular-nums; }
 .kat-zaehler small {
   display: block; margin-top: 3px;
-  font-size: 12.5px; color: var(--text-sehrleise);
+  font-size: var(--t-meta); color: var(--text-sehrleise);
 }
 .kat-zaehler.voll { box-shadow: inset 0 0 0 1px var(--linie); }
 .kat-zaehler.voll b { color: var(--warn); }
@@ -1050,7 +1161,7 @@ select {
 /* Der Fließtext im Grenzen-Hinweis - Absatz, kein Alarm. */
 .grenze-text {
   margin: 0 2px 16px;
-  font-size: 14.5px; line-height: 1.55;
+  font-size: var(--t-sekundaer); line-height: 1.55;
   color: var(--text-leise);
 }
 .grenze-text b { color: var(--text); }
@@ -1059,35 +1170,8 @@ select {
    Backup-Erinnerung und Prüfung
    ============================================================ */
 
-/* Unaufdringliches Band auf der Startseite. Flach, ohne Farbfläche,
-   mit einem ✕ zum Weglegen für den Tag. */
-.backup-band {
-  display: flex; align-items: stretch;
-  background: var(--karte);
-  border-radius: var(--r-s);
-  overflow: hidden;
-  margin-bottom: 14px;
-}
-.bb-haupt {
-  flex: 1; min-width: 0;
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 6px 12px 14px;
-  text-align: left;
-}
-.bb-haupt:active { background: var(--karte-hell); }
-.bb-symbol { font-size: 18px; flex: 0 0 auto; }
-.bb-text { flex: 1; min-width: 0; font-size: 14px; }
-.bb-text b { font-weight: 600; }
-.bb-text small {
-  display: block; margin-top: 1px;
-  font-size: 12.5px; color: var(--text-sehrleise);
-}
-.bb-zu {
-  flex: 0 0 46px;
-  color: var(--text-sehrleise);
-  font-size: 15px;
-}
-.bb-zu:active { background: var(--karte-hell); }
+/* Das Band auf der Startseite steht jetzt bei ".band-hinweis" - es wird
+   dort gemeinsam mit dem Einrichten- und dem Erfassungs-Hinweis benutzt. */
 
 /* Ein stiller Punkt an der Zeile "Daten sichern", solange es fällig ist. */
 .warnpunkt { color: var(--warn); font-size: 11px; }
@@ -1096,13 +1180,13 @@ select {
 .pruef-karte { text-align: center; }
 .pruef-symbol { font-size: 30px; line-height: 1.2; }
 .pruef-wort {
-  font-size: 17px; font-weight: 600;
+  font-size: var(--t-sekundaer); font-weight: 700;
   margin-top: 6px;
 }
 .pruef-karte.gut .pruef-wort { color: var(--plus); }
 .pruef-karte.schlecht .pruef-wort { color: var(--warn); }
 .pruef-unter {
-  font-size: 13px; line-height: 1.55;
+  font-size: var(--t-meta); line-height: 1.55;
   color: var(--text-leise);
   margin-top: 7px;
 }

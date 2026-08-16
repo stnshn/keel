@@ -378,6 +378,25 @@ function geld(cent, mitVorzeichen) {
 
 function geldE(cent, mitVorzeichen) { return geld(cent, mitVorzeichen) + ' €'; }
 
+// Wie viele Tage liegt ein ISO-Datum zurueck? Mittags gerechnet, damit die
+// Sommerzeit nicht um einen Tag danebengreift.
+function tageSeit(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  if (isNaN(d.getTime())) return 0;
+  const heute = new Date();
+  heute.setHours(12, 0, 0, 0);
+  return Math.round((heute - d) / 86400000);
+}
+
+/* Die grosse Zahl eines Schirms passt sich der Laenge an: "730,12 €" traegt
+   die volle Groesse, "− 1.284.310,55 €" wuerde sonst ueber den Rand laufen
+   oder umbrechen. Es bleibt dieselbe Hierarchiestufe, nur schmaler - keine
+   zusaetzliche Schriftgroesse im System. */
+function heroKlasse(text) {
+  const laenge = String(text).length;
+  return laenge > 12 ? ' klein' : laenge > 10 ? ' mittel' : '';
+}
+
 function kategorie(id) {
   return Daten.kategorien.find((k) => k.id === id) || null;
 }
@@ -674,8 +693,7 @@ const UI = {
 
   vermoegenSchirm: function () {
     if (typeof Vermoegen === 'undefined') {
-      return '<div class="kopf"><h1>Vermögen</h1></div>' +
-             '<div class="leer-hinweis">Nicht verfügbar.</div>';
+      return '<div class="inhalt"><div class="leer-hinweis">Vermögen ist nicht verfügbar.</div></div>';
     }
 
     const posten = Daten.vermoegen || [];
@@ -683,77 +701,102 @@ const UI = {
     const brutto = Vermoegen.brutto();
     const schulden = Vermoegen.schulden();
     const verlauf = Vermoegen.verlauf(true);
+    const kredite = Daten.kredite || [];
 
-    let veraenderung = '';
+    // Unter der grossen Zahl steht die Veraenderung. Gibt es dafuer noch
+    // keine Geschichte, tritt der Bestand an ihre Stelle - der Platz bleibt
+    // nicht leer, aber es steht auch nichts Erfundenes darin.
+    let unter;
     if (verlauf.length > 1) {
       const diff = netto - verlauf[0].cent;
-      veraenderung = '<div class="hero-tage">' + (diff >= 0 ? '▲ ' : '▼ ') +
-        geld(Math.abs(diff)) + ' € seit ' + esc(datumText(verlauf[0].datum)) + '</div>';
+      unter = (diff >= 0 ? '▲ ' : '▼ ') + geld(Math.abs(diff)) +
+        ' € seit ' + datumText(verlauf[0].datum);
+    } else {
+      unter = posten.length + (posten.length === 1 ? ' Posten' : ' Posten') +
+        (kredite.length ? ' · ' + kredite.length + ' Kredit' + (kredite.length === 1 ? '' : 'e') : '');
     }
 
+    // Der Kartentitel ist weg - das Wort "Nettovermoegen" stand auf diesem
+    // Schirm dreimal. Im SVG bleibt es als Beschriftung fuer Vorlesehilfen.
     const diagramm = verlauf.length > 1
-      ? '<div class="karte"><p class="karte-titel">Nettovermögen im Verlauf</p>' +
+      ? '<div class="karte">' +
         Diagramm.verlauf(verlauf, DIAGRAMM.vermoegen, { titel: 'Nettovermögen im Verlauf' }) + '</div>'
       : '';
 
-    const liste = posten.length
-      ? '<div class="liste">' + posten.slice()
-          .sort((a, b) => Vermoegen.letzterStand(b) - Vermoegen.letzterStand(a))
-          .map((p) => {
-            const art = VERMOEGENSARTEN[p.art] || VERMOEGENSARTEN.sonstiges;
-            const letzte = (p.staende || []).length ? p.staende[p.staende.length - 1].datum : null;
-            const istNot = p.id === Daten.notgroschen.vermoegenId && !Notgroschen.heisstSelbst(p);
-            return '<button class="listenzeile" data-tu="vermoegen-posten" data-id="' + esc(p.id) + '">' +
-              '<span class="icon">' + esc(p.emoji || art.emoji) + '</span>' +
-              '<span class="mitte"><span class="haupt">' + esc(p.name) + '</span>' +
-                '<span class="neben">' + esc(art.name) + (istNot ? ' · 🛟 Notgroschen' : '') +
-                (letzte ? ' · Stand vom ' + esc(datumText(letzte)) : ' · noch kein Stand') + '</span></span>' +
-              '<span class="rechts mono">' + geld(Vermoegen.letzterStand(p)) + ' €</span></button>';
-          }).join('') + '</div>'
+    const zufuegen = (tu, text) =>
+      '<button class="listenzeile zufuegen" data-tu="' + tu + '">' +
+        '<span class="icon">＋</span>' +
+        '<span class="mitte"><span class="haupt">' + esc(text) + '</span></span>' +
+        '<span class="chevron">›</span></button>';
+
+    /* Die Zeile traegt Name und Betrag. Die Vermoegensart stand frueher
+       daneben, obwohl das Symbol links sie bereits zeigt, und das Datum des
+       letzten Standes bei jeder Zeile - beides ohne Handlungswert. Die
+       Unterzeile erscheint jetzt nur noch, wenn sie etwas zu sagen hat. */
+    const postenZeilen = posten.slice()
+      .sort((a, b) => Vermoegen.letzterStand(b) - Vermoegen.letzterStand(a))
+      .map((p) => {
+        const art = VERMOEGENSARTEN[p.art] || VERMOEGENSARTEN.sonstiges;
+        const staende = p.staende || [];
+        const letzte = staende.length ? staende[staende.length - 1].datum : null;
+        const istNot = p.id === Daten.notgroschen.vermoegenId && !Notgroschen.heisstSelbst(p);
+
+        const hinweise = [];
+        if (istNot) hinweise.push('🛟 Notgroschen');
+        if (!letzte) hinweise.push('noch kein Stand');
+        else if (tageSeit(letzte) > 90) hinweise.push('Stand vom ' + datumText(letzte));
+
+        return '<button class="listenzeile" data-tu="vermoegen-posten" data-id="' + esc(p.id) + '">' +
+          '<span class="icon">' + esc(p.emoji || art.emoji) + '</span>' +
+          '<span class="mitte"><span class="haupt">' + esc(p.name) + '</span>' +
+            (hinweise.length ? '<span class="neben">' + esc(hinweise.join(' · ')) + '</span>' : '') +
+          '</span>' +
+          '<span class="rechts mono">' + geld(Vermoegen.letzterStand(p)) + '</span></button>';
+      }).join('');
+
+    const postenListe = posten.length
+      ? '<div class="liste">' + postenZeilen +
+          zufuegen('vermoegen-neu', 'Posten hinzufügen') +
+          // Ohne Kredite bekommt der Kredit keinen eigenen Abschnitt - sonst
+          // stuende auf dem Schirm dauerhaft ein Angebot fuer etwas, das es
+          // vielleicht nie gibt.
+          (kredite.length ? '' : zufuegen('kredit', 'Kredit anlegen')) +
+        '</div>'
       : '<button class="karte karte-knopf leer-karte" data-tu="vermoegen-neu">' +
           '<span class="leer-symbol">💎</span>' +
-          '<span class="leer-text"><b>Ersten Posten anlegen</b>' +
-          '<small>Konten, Depot, Bargeld</small></span>' +
+          '<span class="leer-text">Ersten Posten anlegen</span>' +
           '<span class="chevron">›</span></button>';
 
-    const kredite = (Daten.kredite || []).length
+    const kreditListe = kredite.length
       ? '<p class="abschnitt-titel">Kredite</p><div class="liste">' +
-        Daten.kredite.map((k) =>
+        kredite.map((k) =>
           '<button class="listenzeile" data-tu="kredit">' +
             '<span class="icon">🏦</span>' +
             '<span class="mitte"><span class="haupt">' + esc(k.name) + '</span>' +
               '<span class="neben">Rate ' + geld(k.rateCent || 0) + ' € · ' +
                 String(k.zinssatz || 0).replace('.', ',') + ' %</span></span>' +
-            '<span class="rechts mono minus">− ' + geld(Kredit.restschuld(k)) + ' €</span></button>').join('') +
+            '<span class="rechts mono minus">− ' + geld(Kredit.restschuld(k)) + '</span></button>').join('') +
+        zufuegen('kredit', 'Kredit hinzufügen') +
         '</div>'
       : '';
 
-    return '<div class="kopf"><h1>Vermögen</h1>' +
-        '<div class="unterzeile">' + posten.length + ' Posten' +
-          ((Daten.kredite || []).length ? ' · ' + Daten.kredite.length + ' Kredit' : '') + '</div></div>' +
-      '<div class="inhalt">' +
-        '<div class="karte hero">' +
-          '<div class="hero-zahl' + (netto >= 0 ? '' : ' minus') + '">' + geldE(netto) + '</div>' +
-          '<div class="hero-unter">Nettovermögen</div>' +
-          veraenderung +
+    return '<div class="inhalt vermoegen-inhalt">' +
+        '<div class="hero">' +
+          '<div class="hero-zahl' + (netto >= 0 ? '' : ' minus') +
+            heroKlasse(geldE(netto)) + '">' + geldE(netto) + '</div>' +
+          '<div class="hero-tage">' + esc(unter) + '</div>' +
         '</div>' +
         (schulden > 0
           ? '<div class="zwei-spalten" style="margin-bottom:14px">' +
               '<div class="mini-karte"><div class="label">Besitz</div>' +
-                '<div class="wert mono">' + geld(brutto) + ' €</div></div>' +
+                '<div class="wert mono">' + geld(brutto) + '</div></div>' +
               '<div class="mini-karte"><div class="label">Schulden</div>' +
-                '<div class="wert mono minus">− ' + geld(schulden) + ' €</div></div>' +
+                '<div class="wert mono minus">− ' + geld(schulden) + '</div></div>' +
             '</div>'
           : '') +
         diagramm +
-        (posten.length ? '<p class="abschnitt-titel">Posten</p>' : '') +
-        liste +
-        (posten.length
-          ? '<button class="knopf zweit" data-tu="vermoegen-neu" style="margin-top:12px">Posten hinzufügen</button>'
-          : '') +
-        kredite +
-        (!(Daten.kredite || []).length
-          ? '<button class="knopf rand" data-tu="kredit" style="margin-top:12px">Kredit anlegen</button>' : '') +
+        postenListe +
+        kreditListe +
       '</div>';
   },
 
@@ -807,24 +850,38 @@ const UI = {
         (suche ? 'Nichts gefunden für „' + esc(this.zustand.suche) + '".'
                : 'Keine ' + titel + ' in ' + esc(monatText(monat)) + '.') + '</div>';
 
+    /* Welche Liste, wie viele, wie viel - in einer Zeile im selben Muster,
+       das die Karten der App ohnehin benutzen. Die Ueberschrift daneben war
+       eine eigene Schriftgroesse fuer ein einziges Wort. Die Zahlen richten
+       sich nach der Suche, sind also auch beim Filtern noch richtig. */
     return '<div class="kopf">' +
         '<div class="kopf-reihe">' +
           '<button class="zurueck" data-tu="zurueck-einaus">‹ Ein &amp; Aus</button>' +
           '<button class="kopf-plus" data-tu="neue-buchung" aria-label="Buchung erfassen">+</button>' +
         '</div>' +
-        '<h1>' + titel + '</h1>' +
-        '<div class="unterzeile">' + liste.length + ' Buchung' + (liste.length === 1 ? '' : 'en') +
-          ' · ' + geldE(gesamt) + '</div>' +
         this.monatswahlHtml() +
       '</div>' +
       '<div class="inhalt">' +
         '<div class="feld"><input type="search" id="suchfeld" placeholder="Suchen…" ' +
           'value="' + esc(this.zustand.suche) + '" autocomplete="off" autocorrect="off" ' +
           'autocapitalize="off" enterkeyhint="search"></div>' +
+        '<p class="karte-titel listen-kopf">' + titel + ' · ' + buchungenText(liste.length) +
+          '<span class="karte-summe">' + geldE(gesamt) + '</span></p>' +
         koerper +
       '</div>';
   },
 
+  /* Die Unterzeile trug bis zu fuenf durch "·" getrennte Angaben - bei jeder
+     einzelnen der oft vierzig Zeilen. Jetzt hoechstens zwei, und nur solche
+     mit Handlungswert:
+
+       - die Notiz, weil sie in eigenen Worten steht
+       - sonst der Kategoriename, aber nur wenn die Ueberschrift ihn nicht
+         ohnehin schon ist
+       - "zaehlt fuer September", weil es den Monat der Buchung verschiebt
+
+     "importiert" ist ersatzlos weg (reine Herkunft, ohne Folge), und
+     "wiederkehrend" steht als Zeichen an der Ueberschrift statt als Wort. */
   buchungHtml: function (b) {
     const k = kategorie(b.kategorieId) || { name: 'Ohne Kategorie', emoji: '❓', ausBilanz: false };
     const neutral = !!k.ausBilanz;
@@ -832,146 +889,116 @@ const UI = {
     const zeichen = neutral ? '' : (b.typ === 'ausgabe' ? '−' : '+');
 
     const untertitel = [];
-    untertitel.push(k.name);
-    if (istVerschoben(b)) untertitel.push('zählt für ' + monatText(wirkMonat(b)).split(' ')[0]);
-    if (b.wiederkehrend) untertitel.push('🔁 wiederkehrend');
-    if (b.quelle === 'csv') untertitel.push('importiert');
     if (b.notiz) untertitel.push(b.notiz);
+    else if (b.haendler) untertitel.push(k.name);
+    if (istVerschoben(b)) untertitel.push('zählt für ' + monatText(wirkMonat(b)).split(' ')[0]);
 
     return '<button class="buchung" data-buchung="' + esc(b.id) + '">' +
       '<span class="icon">' + esc(k.emoji) + '</span>' +
       '<span class="mitte">' +
-        '<span class="titel">' + esc(b.haendler || k.name) + '</span>' +
-        '<span class="sub">' + esc(untertitel.join(' · ')) + '</span>' +
+        '<span class="titel">' + esc(b.haendler || k.name) +
+          (b.wiederkehrend ? ' <small class="wdh" title="kommt jeden Monat">🔁</small>' : '') +
+        '</span>' +
+        (untertitel.length
+          ? '<span class="sub">' + esc(untertitel.join(' · ')) + '</span>' : '') +
       '</span>' +
-      '<span class="wert ' + klasse + '">' + zeichen + geld(b.betragCent) + ' €</span>' +
+      '<span class="wert ' + klasse + '">' + zeichen + geld(b.betragCent) + '</span>' +
     '</button>';
   },
 
   /* ---------- Schirm: Mehr ---------- */
 
+  /* Ein Einstellungsmenue soll man ueberfliegen, nicht lesen. Vorher trug
+     jede der dreizehn Zeilen eine zweite Textzeile - macht sechsundzwanzig,
+     dazu ein Absatz Fliesstext und eine Marke.
+
+     Jetzt gilt: eine Unterzeile nur dort, wo sie einen ZUSTAND traegt
+     ("zuletzt gesichert vor 9 Tagen"). Blosse Beschreibungen dessen, was der
+     Titel schon sagt, sind weg. */
   mehr: function () {
-    const anzahl = Daten.buchungen.length;
     const anzahlKat = aktiveAusgabeKategorien().length;
     const anzahlArchiv = Daten.kategorien.filter((k) => k.archiviert).length;
     const anzahlRegeln = Regeln.anzahl();
+    const anzahlZiele = (Daten.sparziele || []).length;
+    const anzahlBudgets = Object.keys(Daten.budgets || {}).length;
 
-    return '<div class="kopf"><h1>Mehr</h1>' +
-        '<div class="unterzeile">' + anzahl + ' Buchungen insgesamt</div></div>' +
-      '<div class="inhalt">' +
+    // zeile(symbol, titel, zustand, ziel, zusatz)
+    // "zustand" darf leer bleiben - dann bleibt die Zeile einzeilig.
+    const zeile = (symbol, titel, zustand, tu, zusatz) =>
+      '<button class="listenzeile" data-tu="' + tu + '">' +
+        '<span class="icon">' + symbol + '</span>' +
+        '<span class="mitte"><span class="haupt' + (zusatz === 'gefahr' ? ' minus' : '') + '">' +
+          esc(titel) + '</span>' +
+          (zustand ? '<span class="neben">' + esc(zustand) + '</span>' : '') +
+        '</span>' +
+        (zusatz === 'punkt' ? '<span class="rechts warnpunkt">●</span>' : '') +
+        (zusatz === 'gefahr' ? '' : '<span class="chevron">›</span>') +
+      '</button>';
+
+    return '<div class="inhalt mehr-inhalt">' +
 
         '<p class="abschnitt-titel">Dein Geld</p>' +
         '<div class="liste">' +
-          '<button class="listenzeile" data-tu="einstellungen">' +
-            '<span class="icon">⚙️</span>' +
-            '<span class="mitte"><span class="haupt">Einkommen &amp; Name</span>' +
-            '<span class="neben">' +
-              (Daten.einstellungen.mindestnettoCent
-                ? 'Mindestnetto ' + geld(Daten.einstellungen.mindestnettoCent) + ' €'
-                : 'noch nicht eingerichtet') + '</span></span>' +
-            '<span class="chevron">›</span></button>' +
+          zeile('⚙️', 'Einkommen',
+            Daten.einstellungen.mindestnettoCent
+              ? 'Mindestnetto ' + geld(Daten.einstellungen.mindestnettoCent) + ' €'
+              : 'noch nicht eingerichtet',
+            'einstellungen') +
           (typeof Sparen === 'undefined' ? '' :
-          '<button class="listenzeile" data-tu="sparen">' +
-            '<span class="icon">🛟</span>' +
-            '<span class="mitte"><span class="haupt">Sparen</span>' +
-            '<span class="neben">' +
-              (Daten.einstellungen.sparrateCent
+            zeile('🛟', 'Sparen',
+              Daten.einstellungen.sparrateCent
                 ? geld(Daten.einstellungen.sparrateCent) + ' € im Monat · ' +
-                  (Daten.sparziele || []).length + ' Ziel' + ((Daten.sparziele || []).length === 1 ? '' : 'e')
-                : 'Sparrate, Notgroschen, Sparziele') + '</span></span>' +
-            '<span class="chevron">›</span></button>') +
+                  anzahlZiele + ' Ziel' + (anzahlZiele === 1 ? '' : 'e')
+                : '',
+              'sparen')) +
           (typeof Fixkosten === 'undefined' ? '' :
-          '<button class="listenzeile" data-tu="fixkosten">' +
-            '<span class="icon">📌</span>' +
-            '<span class="mitte"><span class="haupt">Fixkosten</span>' +
-            '<span class="neben">' +
-              ((Daten.fixkosten || []).length
-                ? (Daten.fixkosten || []).length + ' Posten · ' + geld(Fixkosten.monatsSumme()) + ' € im Monat'
-                : 'Miete, Strom, Abos, Versicherungen') + '</span></span>' +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="budgets">' +
-            '<span class="icon">🎯</span>' +
-            '<span class="mitte"><span class="haupt">Budgets</span>' +
-            '<span class="neben">' +
-              (Object.keys(Daten.budgets || {}).length
-                ? Object.keys(Daten.budgets).length + ' Kategorien begrenzt · ' +
-                  geld(Budgets.gesamt()) + ' € gesamt'
-                : 'Monatsgrenze pro Kategorie') + '</span></span>' +
-            '<span class="chevron">›</span></button>') +
+            zeile('📌', 'Fixkosten',
+              (Daten.fixkosten || []).length
+                ? (Daten.fixkosten || []).length + ' Posten · ' +
+                  geld(Fixkosten.monatsSumme()) + ' € im Monat'
+                : '',
+              'fixkosten') +
+            zeile('🎯', 'Budgets',
+              anzahlBudgets
+                ? anzahlBudgets + ' Kategorien · ' + geld(Budgets.gesamt()) + ' € gesamt'
+                : '',
+              'budgets')) +
         '</div>' +
 
         '<p class="abschnitt-titel">Buchungen</p>' +
         '<div class="liste">' +
-          '<button class="listenzeile" data-tu="import">' +
-            '<span class="icon">📥</span>' +
-            '<span class="mitte"><span class="haupt">Trade Republic importieren</span>' +
-            '<span class="neben">CSV-Kontoauszug einlesen</span></span>' +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="neue-buchung">' +
-            '<span class="icon">✏️</span>' +
-            '<span class="mitte"><span class="haupt">Buchung erfassen</span>' +
-            '<span class="neben">Von Hand eintragen, z. B. Bargeld</span></span>' +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="liste-ausgaben">' +
-            '<span class="icon">🧾</span>' +
-            '<span class="mitte"><span class="haupt">Alle Ausgaben</span>' +
-            '<span class="neben">Einzelbuchungen ansehen und korrigieren</span></span>' +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="liste-einnahmen">' +
-            '<span class="icon">💰</span>' +
-            '<span class="mitte"><span class="haupt">Alle Einnahmen</span>' +
-            '<span class="neben">Einzelbuchungen ansehen und korrigieren</span></span>' +
-            '<span class="chevron">›</span></button>' +
+          zeile('📥', 'Trade Republic importieren', '', 'import') +
+          zeile('✏️', 'Buchung erfassen', '', 'neue-buchung') +
+          zeile('🧾', 'Alle Ausgaben', '', 'liste-ausgaben') +
+          zeile('💰', 'Alle Einnahmen', '', 'liste-einnahmen') +
         '</div>' +
 
         '<p class="abschnitt-titel">Verwalten</p>' +
         '<div class="liste">' +
-          '<button class="listenzeile" data-tu="kategorien">' +
-            '<span class="icon">🏷️</span>' +
-            '<span class="mitte"><span class="haupt">Kategorien</span>' +
-            '<span class="neben">' + anzahlKat + ' für Ausgaben · Grenze ' + KAT_GRENZE +
-              (anzahlArchiv ? ' · ' + anzahlArchiv + ' im Archiv' : '') + '</span></span>' +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="regeln">' +
-            '<span class="icon">🧠</span>' +
-            '<span class="mitte"><span class="haupt">Gelernte Zuordnungen</span>' +
-            '<span class="neben">' + anzahlRegeln + ' Händler bekannt</span></span>' +
-            '<span class="chevron">›</span></button>' +
+          zeile('🏷️', 'Kategorien',
+            // Ueber der Grenze waere "15 von 12" schlicht falsch gelesen.
+            (anzahlKat <= KAT_GRENZE
+              ? anzahlKat + ' von ' + KAT_GRENZE
+              : anzahlKat + ' aktiv · Grenze ' + KAT_GRENZE) +
+              (anzahlArchiv ? ' · ' + anzahlArchiv + ' im Archiv' : ''),
+            'kategorien') +
+          zeile('🧠', 'Gelernte Zuordnungen', anzahlRegeln + ' Händler', 'regeln') +
         '</div>' +
 
         '<p class="abschnitt-titel">Backup</p>' +
         '<div class="liste">' +
-          '<button class="listenzeile" data-tu="export">' +
-            '<span class="icon">💾</span>' +
-            '<span class="mitte"><span class="haupt">Daten sichern</span>' +
-            '<span class="neben">' + esc(Backup.standText()) + '</span></span>' +
-            (Backup.faellig() && Backup.etwasZuVerlieren()
-              ? '<span class="rechts warnpunkt">●</span>' : '') +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="backup-pruefen">' +
-            '<span class="icon">🔍</span>' +
-            '<span class="mitte"><span class="haupt">Backup prüfen</span>' +
-            '<span class="neben">Testlauf: sichern, wieder einlesen, nachzählen</span></span>' +
-            '<span class="chevron">›</span></button>' +
-          '<button class="listenzeile" data-tu="import-json">' +
-            '<span class="icon">♻️</span>' +
-            '<span class="mitte"><span class="haupt">Backup einspielen</span>' +
-            '<span class="neben">JSON-Datei wiederherstellen</span></span>' +
-            '<span class="chevron">›</span></button>' +
+          zeile('💾', 'Daten sichern', Backup.standText(), 'export',
+            Backup.faellig() && Backup.etwasZuVerlieren() ? 'punkt' : '') +
+          zeile('🔍', 'Backup prüfen', '', 'backup-pruefen') +
+          zeile('♻️', 'Backup einspielen', '', 'import-json') +
         '</div>' +
-        '<p class="hinweis">Deine Daten liegen nur auf diesem Gerät. Wenn du den Browser-Speicher ' +
-          'löschst oder das iPhone wechselst, sind sie weg. Sichere sie regelmäßig.</p>' +
 
         '<p class="abschnitt-titel">Gefahrenzone</p>' +
         '<div class="liste">' +
-          '<button class="listenzeile" data-tu="alles-loeschen">' +
-            '<span class="icon">🗑️</span>' +
-            '<span class="mitte"><span class="haupt minus">Alle Daten löschen</span>' +
-            '<span class="neben">Setzt die App komplett zurück</span></span></button>' +
+          zeile('🗑️', 'Alle Daten löschen', '', 'alles-loeschen', 'gefahr') +
         '</div>' +
 
-        '<div class="marke">Keel ' + APP_VERSION + '<br>' +
-          'Alles offline. Keine Konten, keine Cloud, keine Werbung.</div>' +
+        '<div class="marke">Keel ' + APP_VERSION + '</div>' +
       '</div>';
   }
 };
@@ -1012,6 +1039,12 @@ const Erfassung = {
       stamm: '',
       katVorbelegt: true
     };
+
+    // Beim Erfassen ist nur der Betrag Pflicht - alles Weitere liegt
+    // zugeklappt, damit das Blatt nicht wie ein Formular aussieht. Beim
+    // Bearbeiten steht es offen: wer hierher kommt, will meist genau daran
+    // etwas aendern.
+    this.zustand.detailsOffen = !!vorhanden;
 
     Blatt.oeffnen({
       titel: vorhanden ? 'Buchung bearbeiten' : 'Neue Buchung',
@@ -1075,23 +1108,35 @@ const Erfassung = {
         '<button class="klein" data-loeschen="eins">⌫</button>' +
       '</div>' +
 
-      '<div class="feld"><label>Kategorie</label>' +
-        '<div class="kat-gitter" id="kat-gitter"></div></div>' +
+      // Ohne Beschriftung: ein Gitter aus Symbolkacheln sagt von selbst,
+      // dass hier die Kategorie gewaehlt wird.
+      '<div class="kat-gitter" id="kat-gitter"></div>' +
 
-      '<div class="feld-reihe">' +
-        '<div class="feld"><label>Datum</label>' +
-          '<input type="date" id="feld-datum" value="' + esc(z.datum) + '"></div>' +
-        '<div class="feld"><label>Bezeichnung</label>' +
-          '<input type="text" id="feld-haendler" placeholder="z. B. REWE" ' +
-          'value="' + esc(z.haendler) + '" autocomplete="off" enterkeyhint="done"></div>' +
+      '<button class="detail-zeile" id="knopf-details" ' +
+        'aria-expanded="' + (z.detailsOffen ? 'true' : 'false') + '">' +
+        '<span id="detail-text">Details</span>' +
+        '<span class="chevron" id="detail-pfeil">' + (z.detailsOffen ? '⌄' : '›') + '</span>' +
+      '</button>' +
+
+      '<div id="detail-block"' + (z.detailsOffen ? '' : ' class="versteckt"') + '>' +
+        '<div class="feld-reihe">' +
+          '<div class="feld"><label>Datum</label>' +
+            '<input type="date" id="feld-datum" value="' + esc(z.datum) + '"></div>' +
+          '<div class="feld"><label>Bezeichnung</label>' +
+            '<input type="text" id="feld-haendler" placeholder="z. B. REWE" ' +
+            'value="' + esc(z.haendler) + '" autocomplete="off" enterkeyhint="done"></div>' +
+        '</div>' +
+
+        '<div class="feld"><label>Notiz</label>' +
+          '<input type="text" id="feld-notiz" placeholder="Wofür war das?" ' +
+          'value="' + esc(z.notiz) + '" autocomplete="off" enterkeyhint="done"></div>' +
+
+        '<div id="wiederkehrend-block"></div>' +
       '</div>' +
 
-      '<div class="feld"><label>Notiz (optional)</label>' +
-        '<input type="text" id="feld-notiz" placeholder="Wofür war das?" ' +
-        'value="' + esc(z.notiz) + '" autocomplete="off" enterkeyhint="done"></div>' +
-
-      '<div id="wiederkehrend-block"></div>' +
-
+      // Der Knopf bleibt, obwohl "Sichern" oben rechts dasselbe tut: nach dem
+      // Ziffernblock steht der Daumen unten. Der Weg oben waere weiter - und
+      // der Flow hat Vorrang vor der Redundanz-Regel.
       '<button class="knopf" id="knopf-speichern" style="margin-top:6px">Speichern</button>' +
 
       (z.bearbeiten ?
@@ -1131,11 +1176,21 @@ const Erfassung = {
       this.aktualisiere();
     });
 
+    koerper.querySelector('#knopf-details').addEventListener('click', () => {
+      z.detailsOffen = !z.detailsOffen;
+      koerper.querySelector('#detail-block').classList.toggle('versteckt', !z.detailsOffen);
+      koerper.querySelector('#knopf-details').setAttribute('aria-expanded', z.detailsOffen ? 'true' : 'false');
+      koerper.querySelector('#detail-pfeil').textContent = z.detailsOffen ? '⌄' : '›';
+      this.detailsBeschriften();
+    });
+
     koerper.querySelector('#feld-datum').addEventListener('change', (e) => {
       z.datum = e.target.value || heuteISO();
+      this.detailsBeschriften();
     });
     koerper.querySelector('#feld-haendler').addEventListener('input', (e) => {
       z.haendler = e.target.value;
+      this.detailsBeschriften();
     });
     koerper.querySelector('#feld-notiz').addEventListener('input', (e) => {
       z.notiz = e.target.value;
@@ -1155,6 +1210,25 @@ const Erfassung = {
     }
   },
 
+  /* Zugeklappt darf nichts verlorengehen: steht im Detailteil etwas, das vom
+     Normalfall abweicht - ein anderes Datum oder eine Bezeichnung -, sagt es
+     die Zeile selbst. Sonst uebersieht man ein versehentlich gesetztes Datum. */
+  detailsBeschriften: function () {
+    const z = this.zustand;
+    const koerper = Blatt.koerper();
+    if (!koerper) return;
+    const feld = koerper.querySelector('#detail-text');
+    if (!feld) return;
+
+    if (z.detailsOffen) { feld.textContent = 'Details'; return; }
+
+    const teile = [];
+    if (z.datum && z.datum !== heuteISO()) teile.push(datumText(z.datum));
+    if (z.haendler.trim()) teile.push(z.haendler.trim());
+
+    feld.textContent = teile.length ? 'Details · ' + teile.join(' · ') : 'Details';
+  },
+
   aktualisiere: function () {
     const z = this.zustand;
     const koerper = Blatt.koerper();
@@ -1168,12 +1242,13 @@ const Erfassung = {
     // Betrag
     const anzeige = koerper.querySelector('#betrag-anzeige');
     const cent = parseInt(z.centText || '0', 10);
+    const text = (z.typ === 'ausgabe' ? '−' : '+') + geld(cent) + ' €';
     anzeige.className = 'betrag-anzeige ' + (z.typ === 'ausgabe' ? 'aus' : 'ein') +
-      (z.centText ? '' : ' leer');
+      (z.centText ? heroKlasse(text) : ' leer');
     if (!z.centText) {
       anzeige.innerHTML = '<span class="grau">0,00 €</span>';
     } else {
-      anzeige.textContent = (z.typ === 'ausgabe' ? '−' : '+') + geld(cent) + ' €';
+      anzeige.textContent = text;
     }
 
     // Kategorien: haeufigste zuerst. Archivierte tauchen hier nicht mehr auf -
@@ -1219,8 +1294,12 @@ const Erfassung = {
     const block = koerper.querySelector('#wiederkehrend-block');
     if (z.typ === 'einnahme') {
       block.innerHTML =
+        // Frueher hiess der Schalter "Wiederkehrend" und brauchte darunter
+        // die Beispiele "z. B. Gehalt, Miete, monatlicher Zuschuss", um
+        // verstanden zu werden. Ein Schalter, den erst der Beispieltext
+        // erklaert, ist falsch beschriftet - jetzt sagt er es selbst.
         '<div class="schalter-zeile" style="margin-bottom:15px">' +
-          '<div class="txt">Wiederkehrend<small>z. B. Gehalt, Miete, monatlicher Zuschuss</small></div>' +
+          '<div class="txt">Kommt jeden Monat</div>' +
           '<div class="schalter' + (z.wiederkehrend ? ' an' : '') + '" id="schalter-wdh"></div>' +
         '</div>';
       block.querySelector('#schalter-wdh').addEventListener('click', () => {
@@ -1230,6 +1309,8 @@ const Erfassung = {
     } else {
       block.innerHTML = '';
     }
+
+    this.detailsBeschriften();
 
     // Sichern-Knopf aktiv? Pflicht ist nur der Betrag - Bezeichnung und
     // Notiz duerfen leer bleiben, die Kategorie ist vorbelegt.
@@ -1351,8 +1432,8 @@ const Kategorien = {
     koerper.innerHTML =
       '<div class="kat-zaehler' + (voll ? ' voll' : '') + '">' +
         '<b>' + aktiv + ' von ' + KAT_GRENZE + '</b> Ausgabe-Kategorien in Gebrauch' +
-        (aktiv > KAT_GRENZE ? '<small>Mehr als vorgesehen. Nichts wird von selbst ' +
-          'archiviert — du entscheidest.</small>' : '') +
+        (aktiv > KAT_GRENZE
+          ? '<small>Nichts wird von selbst archiviert.</small>' : '') +
       '</div>' +
 
       gruppe('ausgabe', 'Ausgaben') +
@@ -1372,10 +1453,10 @@ const Kategorien = {
           '</div>'
         : '') +
 
-      '<p class="hinweis">Die Grenze gilt für Ausgabe-Kategorien. Einnahmen und ' +
-        '„Umbuchung" zählen nicht mit. Archivierte Kategorien verschwinden aus der ' +
-        'Erfassung, bleiben bei alten Buchungen aber stehen und tauchen in den ' +
-        'Auswertungen weiter auf.</p><div style="height:12px"></div>';
+      // Der Absatz, der hier stand, erklaerte das Archivieren jedem, der die
+      // Verwaltung nur oeffnet. Die Beruhigung steht jetzt dort, wo wirklich
+      // archiviert wird, und im Archiv selbst - nicht als Dauertext.
+      '<div style="height:12px"></div>';
 
     koerper.querySelectorAll('[data-kat]').forEach((b) => {
       b.addEventListener('click', () => this.bearbeiten(b.dataset.kat));
@@ -1424,9 +1505,7 @@ const Kategorien = {
               '</button>').join('') +
           '</div>' +
 
-          '<p class="hinweis">Am seltensten benutzt steht oben. Archivieren löscht ' +
-            'nichts: die Buchungen bleiben, die Kategorie taucht nur nicht mehr bei ' +
-            'der Erfassung auf. Zurückholen geht jederzeit.</p>' +
+          '<p class="hinweis">Archivieren löscht nichts – zurückholen geht jederzeit.</p>' +
 
           // Die Grenze gilt nur fuer Ausgaben. Ohne diesen Weg waere eine neue
           // Einnahme-Kategorie ab jetzt gar nicht mehr moeglich.
@@ -1476,10 +1555,9 @@ const Kategorien = {
             .sort((a, b) => (nutzung[a.id] || 0) - (nutzung[b.id] || 0));
 
           koerper.innerHTML =
-            '<p class="grenze-text">Keel arbeitet ab jetzt mit höchstens ' + KAT_GRENZE +
+            '<p class="grenze-text">Keel arbeitet mit höchstens ' + KAT_GRENZE +
               ' Ausgabe-Kategorien. Du hast <b>' + aktiv.length + '</b>. ' +
-              'Es wird nichts von selbst archiviert — hier steht nur, wie oft du jede ' +
-              'wirklich benutzt hast. Die selten genutzten oben sind die Kandidaten.</p>' +
+              'Am seltensten benutzt steht oben.</p>' +
 
             (zuViel > 0
               ? '<div class="kat-zaehler voll"><b>' + zuViel + '</b> zu viel</div>'
@@ -1497,8 +1575,7 @@ const Kategorien = {
             '</div>' +
 
             '<button class="knopf" id="hw-fertig">Fertig</button>' +
-            '<p class="hinweis">Archivieren löscht nichts. Alte Buchungen behalten ihre ' +
-              'Bezeichnung, die Auswertungen bleiben vollständig.</p>' +
+            '<p class="hinweis">Archivieren löscht nichts – zurückholen geht jederzeit.</p>' +
             '<div style="height:12px"></div>';
 
           koerper.querySelectorAll('[data-hw]').forEach((b) => {
@@ -1555,8 +1632,8 @@ const Kategorien = {
                 '</button>').join('') +
             '</div>' +
 
-            '<p class="hinweis">Die Buchungen dieser Kategorien sind unverändert da und ' +
-              'zählen weiter in allen Auswertungen mit.</p><div style="height:12px"></div>';
+            '<p class="hinweis">Die Buchungen bleiben in allen Auswertungen.</p>' +
+            '<div style="height:12px"></div>';
 
           koerper.querySelectorAll('[data-re]').forEach((b) => {
             b.addEventListener('click', () => { this.reaktivieren(b.dataset.re); male(); });
@@ -1808,8 +1885,10 @@ const RegelSchirm = {
     };
 
     koerper.innerHTML =
-      '<p class="hinweis" style="margin-top:0">Tippe auf eine Zeile, um sie zu vergessen. ' +
-        'Beim nächsten Import wird dieser Händler dann wieder neu geraten.</p>' +
+      // "Tippe auf eine Zeile" beschreibt, was eine Listenzeile ohnehin
+      // anbietet. Uebrig bleibt die Folge, die man nicht sieht.
+      '<p class="hinweis" style="margin-top:0">Antippen vergisst die Zuordnung – ' +
+        'beim nächsten Import wird neu geraten.</p>' +
 
       (exakt.length ?
         '<p class="abschnitt-titel">Genaue Händler (' + exakt.length + ')</p><div class="liste">' +
@@ -1876,15 +1955,14 @@ const Import = {
             '6. Hier oben auswählen' +
           '</div>' +
 
-          '<p class="hinweis">Liegt die Datei in iCloud Drive und ist noch nicht ' +
-            'aufs Gerät geladen (kleines Wolken-Symbol), tippe sie in der Dateien-App ' +
-            'einmal an und warte, bis das Symbol verschwindet. Vorher kann Keel sie ' +
-            'nicht öffnen.</p>' +
+          // Bleibt: eine echte Stolperfalle von iOS und drei Verhaltensweisen,
+          // die man dem Ergebnis nicht ansieht.
+          '<p class="hinweis">Liegt die Datei in iCloud Drive und ist noch nicht geladen ' +
+            '(Wolken-Symbol), tippe sie in der Dateien-App einmal an.</p>' +
 
-          '<p class="hinweis">Bereits vorhandene Buchungen erkennt Keel automatisch und ' +
-            'überspringt sie. Du kannst dieselbe Datei also gefahrlos mehrfach einlesen. ' +
-            'Wertpapierkäufe und -verkäufe werden übersprungen, weil sie keine Ausgabe sind – ' +
-            'die Ordergebühr wird aber erfasst.</p>';
+          '<p class="hinweis">Schon vorhandene Buchungen werden übersprungen – dieselbe ' +
+            'Datei lässt sich gefahrlos mehrfach einlesen. Wertpapiergeschäfte bleiben ' +
+            'außen vor, die Ordergebühr wird erfasst.</p>';
 
         const feld = koerper.querySelector('#datei-feld');
         feld.addEventListener('change', (e) => this.dateiGewaehlt(e));
@@ -2092,9 +2170,8 @@ const Import = {
         '<button class="knopf zweit" data-alle="an" style="padding:11px;font-size:14px">Alle an</button>' +
         '<button class="knopf zweit" data-alle="aus" style="padding:11px;font-size:14px">Alle aus</button>' +
       '</div>' +
-      '<p class="hinweis" style="margin-top:0">Tippe auf eine Kategorie, um sie zu ändern. ' +
-        'Keel merkt sich deine Wahl für diesen Händler. ' +
-        '<span style="color:var(--akzent)">Türkis</span> = schon gelernt.</p>';
+      '<p class="hinweis" style="margin-top:0">Keel merkt sich deine Wahl für diesen ' +
+        'Händler. <span style="color:var(--akzent)">Türkis</span> = schon gelernt.</p>';
 
     const zeilen = this.vorschlaege.map((v, i) => {
       const k = kategorie(v.kategorieId) || { name: '—', emoji: '❓' };
@@ -2345,10 +2422,9 @@ const Backup = {
               '</div>'
             : '') +
 
-          '<p class="hinweis">Dieser Test hat deine Daten nicht angefasst und nichts ' +
-            'gespeichert. Er beweist, dass aus einer Sicherung derselbe Stand ' +
-            'zurückkommt — nicht, dass die Datei sicher liegt. Dafür bewahre sie ' +
-            'außerhalb des iPhones auf.</p>' +
+          '<p class="hinweis">Der Test hat nichts angefasst und nichts gespeichert. Er ' +
+            'zeigt, dass aus einer Sicherung derselbe Stand zurückkommt — nicht, dass ' +
+            'die Datei sicher liegt.</p>' +
 
           (e.ok ? '<button class="knopf" id="p-sichern">Jetzt richtig sichern</button>' : '') +
           '<div style="height:20px"></div>';
@@ -2399,10 +2475,14 @@ const Backup = {
           '<button class="knopf" id="b-datei">Als Datei sichern</button>' +
           '<button class="knopf zweit" id="b-teilen">Teilen / in Dateien ablegen</button>' +
           '<button class="knopf rand" id="b-kopieren">In die Zwischenablage kopieren</button>' +
+          // Der Satz stand frueher als Absatz im Reiter "Mehr". Dort war er
+          // Fliesstext neben der Liste; hier steht er in dem Moment, in dem
+          // er zaehlt.
           '<p class="hinweis" style="margin-top:16px">Auf dem iPhone landet die Datei in ' +
             '„Downloads" oder du wählst über <b>Teilen</b> direkt einen Ort in der ' +
             'Dateien-App oder iCloud Drive. Bewahre die Datei außerhalb des iPhones auf – ' +
-            'sonst nützt sie bei einem Gerätewechsel nichts.</p>';
+            'löschst du den Browser-Speicher oder wechselst das Gerät, sind die Daten ' +
+            'sonst weg.</p>';
 
         koerper.querySelector('#b-datei').addEventListener('click', () => {
           const blob = new Blob([text], { type: 'application/json' });
@@ -2602,6 +2682,8 @@ function starten() {
       else if (was === 'liste-ausgaben')  { UI.zustand.listenArt = 'ausgabe';  UI.zeige('liste'); }
       else if (was === 'liste-einnahmen') { UI.zustand.listenArt = 'einnahme'; UI.zeige('liste'); }
       else if (was === 'zurueck-einaus')  UI.zeige('einaus');
+      else if (was === 'kat-mehr') { Start.katOffen = !Start.katOffen; UI.zeichne(); }
+      else if (was === 'rechnung-mehr') { EinAus.detailOffen = !EinAus.detailOffen; UI.zeichne(); }
       else if (was.indexOf('zeitraum') === 0) { /* siehe unten */ }
       else if (was === 'export') Backup.exportieren();
       else if (was === 'import-json') Backup.importieren();
