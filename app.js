@@ -66,7 +66,7 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 7,
+      version: 8,
       erstellt: new Date().toISOString(),
       buchungen: [],
       // Tage, an denen bewusst nichts ausgegeben wurde (ISO-Datum, z. B.
@@ -94,7 +94,11 @@ const Speicher = {
         // Tag, an dem das Erinnerungsband weggetippt wurde.
         backupBandTag: '',
         // Der einmalige Hinweis, wenn mehr als KAT_GRENZE Kategorien aktiv sind.
-        katHinweisGezeigt: false
+        katHinweisGezeigt: false,
+        // Welche Kaertchen im Kennzahlen-Karussell der Startseite stehen.
+        // Schluessel sind die IDs aus der Registry KARTEN (start.js). Ein
+        // fehlender Schluessel gilt als "an" - siehe reparieren().
+        karten: {}
       }
     };
   },
@@ -205,7 +209,19 @@ const Speicher = {
       if (typeof f.ausBuchungId !== 'string') f.ausBuchungId = '';
     });
 
-    d.version = 7;
+    // --- Erweiterung auf Version 8 (Kennzahlen-Karussell) ---
+    // Hier steht nur, was AUSGESCHALTET wurde. Ein fehlender Schluessel
+    // heisst "an" - deshalb zeigen aeltere Staende und Backups automatisch
+    // alle Karten, und ein spaeter ergaenzter Kartentyp erscheint von
+    // selbst, ohne dass hier nachgezogen werden muss.
+    if (!e.karten || typeof e.karten !== 'object' || Array.isArray(e.karten)) {
+      e.karten = {};
+    }
+    Object.keys(e.karten).forEach((id) => {
+      e.karten[id] = e.karten[id] !== false;
+    });
+
+    d.version = 8;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
@@ -696,6 +712,11 @@ const UI = {
       b.classList.toggle('an', b.dataset.schirm === s);
     });
 
+    // Das Karussell wischt von allein (scroll-snap). Nur die Punkte
+    // darunter brauchen einen Zuhoerer - er haengt an frisch gezeichneten
+    // Elementen und wird deshalb hier neu gesetzt.
+    if (s === 'start') Start.verdrahte(ziel);
+
     if (typeof Diagramm !== 'undefined') Diagramm.verdrahte(ziel);
   },
 
@@ -993,6 +1014,10 @@ const UI = {
               (anzahlArchiv ? ' · ' + anzahlArchiv + ' im Archiv' : ''),
             'kategorien') +
           zeile('🧠', 'Gelernte Zuordnungen', anzahlRegeln + ' Händler', 'regeln') +
+          (typeof Dashboard === 'undefined' ? '' :
+            zeile('📊', 'Dashboard-Karten',
+              Dashboard.anzahlAn() + ' von ' + KARTEN.length + ' sichtbar',
+              'dashboard-karten')) +
         '</div>' +
 
         '<p class="abschnitt-titel">Backup</p>' +
@@ -2685,6 +2710,7 @@ function starten() {
       else if (was === 'kredit') Kredit.oeffnen();
       else if (was === 'sparen') Sparen.oeffnen();
       else if (was === 'einstellungen') Einstellungen.oeffnen();
+      else if (was === 'dashboard-karten') Dashboard.oeffnen();
       else if (was === 'neue-buchung') Erfassung.oeffnen(null);
       else if (was === 'nulltag') Zaehler.nullTagEintragen();
       else if (was === 'vermoegen-neu') Vermoegen.bearbeiten(null);

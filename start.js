@@ -24,6 +24,9 @@
    kommt.
    ============================================================ */
 
+// So viele abgeschlossene Monate gehen in das Durchschnittseinkommen ein.
+const SCHNITT_MONATE = 6;
+
 const Monatsrechnung = {
 
   // Das Gehalt, das für diesen Monat gilt (nach der Monatsmitte-Regel).
@@ -61,6 +64,46 @@ const Monatsrechnung = {
     return {
       cent: offen.reduce((s, f) => s + f.betragCent, 0),
       posten: offen
+    };
+  },
+
+  /* Was kommt in einem normalen Monat herein?
+     ------------------------------------------------------------
+     Gemittelt wird über die letzten SCHNITT_MONATE abgeschlossenen
+     Monate - der laufende bleibt außen vor, er ist noch nicht fertig.
+     Gezählt werden nur Monate, in denen überhaupt etwas hereinkam;
+     ein Monat ohne Einnahmen ist meist eine Lücke in den Daten und
+     würde den Schnitt nach unten ziehen.
+
+     Gibt es noch keinen einzigen solchen Monat, tritt das
+     Mindestnetto an die Stelle des Schnitts - dieselbe Zahl, mit
+     der auch die Monatsrechnung vor dem Zahltag arbeitet. */
+  durchschnittsEinkommen: function () {
+    const bis = monatVerschieben(monatVon(heuteISO()), -1);
+    const von = monatVerschieben(bis, -(SCHNITT_MONATE - 1));
+
+    const proMonat = {};
+    Daten.buchungen.forEach((b) => {
+      if (b.typ !== 'einnahme' || !zaehltMit(b)) return;
+      const m = wirkMonat(b);
+      if (m < von || m > bis) return;
+      proMonat[m] = (proMonat[m] || 0) + b.betragCent;
+    });
+
+    const monate = Object.keys(proMonat);
+    if (!monate.length) {
+      return {
+        cent: Daten.einstellungen.mindestnettoCent || 0,
+        monate: 0,
+        geschaetzt: true
+      };
+    }
+
+    const summe = monate.reduce((s, m) => s + proMonat[m], 0);
+    return {
+      cent: Math.round(summe / monate.length),
+      monate: monate.length,
+      geschaetzt: false
     };
   },
 
@@ -157,6 +200,12 @@ const Zaehler = {
     return tage;
   },
 
+  // Wie viele der 30 Tage sind erfasst? Steht hier und nicht im HTML,
+  // damit Kärtchen und Zeile dieselbe Zahl aus derselben Quelle nehmen.
+  anzahl: function () {
+    return this.fenster().reduce((s, t) => s + (t.erfasst ? 1 : 0), 0);
+  },
+
   heuteErfasst: function () {
     return this.erfassteTage().has(heuteISO());
   },
@@ -181,6 +230,117 @@ const Zaehler = {
 };
 
 /* ============================================================
+   Kennzahlen-Kärtchen
+   ============================================================
+   Eine Liste, zwei Abnehmer: das Karussell auf der Startseite
+   und die Schalterliste in den Einstellungen. Eine weitere
+   Kennzahl ist ein weiterer Eintrag hier - an beiden Abnehmern
+   ist dafür nichts zu ändern.
+
+   Pro Eintrag:
+     id            Schlüssel in Daten.einstellungen.karten
+     label         die kleine Zeile über der Zahl
+     beschreibung  steht nur in den Einstellungen unter dem Schalter
+     wert()        { text, klasse, kontext } - erst beim Zeichnen gerufen
+
+   "klasse" ist '' (neutral), 'gut', 'warn' oder 'minus'.
+   Gerechnet wird hier nichts: jeder Eintrag greift auf die
+   Berechnung zu, die es in der App ohnehin schon gibt.
+   ============================================================ */
+
+/* Wie heroKlasse, nur für die kleinere Zahl im Kärtchen: ein langer
+   Betrag bekommt dieselbe Stufe in schmal, statt umzubrechen.
+
+   Die Schwellen sind auf einem 360px breiten Gerät ausgemessen - dem
+   schmalsten, das noch in Frage kommt. "≈ −1.234.567,89 €" ist der
+   längste Fall, der praktisch vorkommt, und liegt damit in "klein". */
+function kkKlasse(text) {
+  const laenge = String(text).length;
+  return laenge > 16 ? ' klein' : laenge > 13 ? ' mittel' : '';
+}
+
+const KARTEN = [
+
+  {
+    id: 'rest',
+    label: 'Diesen Monat noch übrig',
+    beschreibung: 'Die große Zahl der Startseite',
+    wert: function () {
+      const r = Monatsrechnung.alles(monatVon(heuteISO()));
+      const tage = Start.tageRest();
+      const name = monatText(monatVon(heuteISO())).split(' ')[0];
+
+      return {
+        text: (r.geschaetzt ? '≈ ' : '') + geldE(r.verfuegbarCent),
+        klasse: r.verfuegbarCent < 0 ? 'minus'
+              : (r.einnahmenCent > 0 && r.verfuegbarCent < r.einnahmenCent * 0.1) ? 'warn' : '',
+        kontext: tage === 0
+          ? 'letzter Tag im ' + name
+          : 'noch ' + tage + ' Tag' + (tage === 1 ? '' : 'e') + ' im ' + name
+      };
+    }
+  },
+
+  {
+    id: 'puffer',
+    label: 'Monatspuffer',
+    beschreibung: 'Durchschnittliches Einkommen minus Fixkosten',
+    wert: function () {
+      const ein = Monatsrechnung.durchschnittsEinkommen();
+      const fix = typeof Fixkosten !== 'undefined' ? Fixkosten.monatsSumme() : 0;
+      const puffer = ein.cent - fix;
+
+      return {
+        text: geldE(puffer),
+        klasse: puffer < 0 ? 'minus' : '',
+        // Woher der Schnitt stammt, gehört an die Zahl. Sonst steht dort
+        // eine Zahl, deren Grundlage niemand kennt.
+        kontext: ein.geschaetzt
+          ? (ein.cent ? 'geschätzt aus dem Mindestnetto' : 'noch keine Einnahmen erfasst')
+          : 'Ø aus ' + ein.monate + ' Monat' + (ein.monate === 1 ? '' : 'en')
+      };
+    }
+  },
+
+  {
+    id: 'fix',
+    label: 'Fixkosten gesamt',
+    beschreibung: 'Summe aller aktiven Posten pro Monat',
+    wert: function () {
+      if (typeof Fixkosten === 'undefined') {
+        return { text: geldE(0), klasse: '', kontext: '' };
+      }
+      const anzahl = (Daten.fixkosten || []).filter((f) => f.aktiv !== false).length;
+
+      return {
+        text: geldE(Fixkosten.monatsSumme()),
+        klasse: '',
+        kontext: anzahl
+          ? anzahl + ' Posten · pro Monat'
+          : 'noch keine Posten eingetragen'
+      };
+    }
+  },
+
+  {
+    id: 'quote',
+    label: 'Erfassungsquote',
+    beschreibung: 'Erfasste Tage der letzten 30',
+    wert: function () {
+      const anzahl = Zaehler.anzahl();
+      return {
+        text: String(anzahl),
+        // Wie in der Zeile darunter: ab dem Ziel grün, sonst neutral.
+        // Nie rot - der Zähler mahnt nicht.
+        klasse: anzahl >= ZIEL_TAGE ? 'gut' : '',
+        kontext: 'von ' + FENSTER_TAGE + ' Tagen erfasst'
+      };
+    }
+  }
+
+];
+
+/* ============================================================
    Startseite
    ============================================================ */
 
@@ -197,55 +357,103 @@ const Start = {
     return letzter - d.getDate();
   },
 
-  /* Ein Schirm, eine Zahl. Darüber steht nichts, daneben steht nichts.
+  /* Oben eine leise Ansprache, darunter die Kennzahlen zum Wischen.
      Alles Weitere ordnet sich darunter ein - und was nur beim genauen
      Hinsehen zählt, liegt eine Tippbewegung tiefer. */
   html: function () {
-    const monat = monatVon(heuteISO());
-    const r = Monatsrechnung.alles(monat);
-    const rest = this.tageRest();
-    const name = monatText(monat).split(' ')[0];
-
-    const klasse = r.verfuegbarCent < 0 ? ' minus'
-                 : (r.einnahmenCent > 0 && r.verfuegbarCent < r.einnahmenCent * 0.1) ? ' warn' : '';
-
-    // Das Ungefähr-Zeichen sitzt an der Zahl selbst, nicht in einer Fußnote.
-    const zahl = (r.geschaetzt ? '≈ ' : '') + geldE(r.verfuegbarCent);
-
     return '<div class="inhalt start-inhalt">' +
-
-        '<div class="hero">' +
-          '<div class="hero-zahl' + klasse + heroKlasse(zahl) + '">' + zahl + '</div>' +
-          '<div class="hero-tage">' +
-            (rest === 0 ? 'letzter Tag im ' + esc(name)
-                        : 'noch ' + rest + ' Tag' + (rest === 1 ? '' : 'e') + ' im ' + esc(name)) +
-          '</div>' +
-        '</div>' +
-
-        this.zaehlerZeile() +
+        this.begruessung() +
+        this.karussell() +
+        this.nulltagZeile() +
         this.band() +
         this.ruecklagenKarte() +
         this.kategorienKarte() +
       '</div>';
   },
 
-  /* Der Erfassungs-Zähler: eine einzige ruhige Zeile. Die 30 Punkte sind
-     entfallen - sie haben dieselbe Zahl ein zweites Mal erzählt. */
-  zaehlerZeile: function () {
-    const anzahl = Zaehler.fenster().reduce((s, t) => s + (t.erfasst ? 1 : 0), 0);
+  /* Eine halbe Zeile, kein Header. Ohne Namen: Keel fragt nirgends nach
+     einem, und eine Abfrage nur für diese Zeile wäre der falsche Preis. */
+  begruessung: function () {
+    const stunde = new Date().getHours();
+    const text = stunde < 5  ? 'Guten Abend'
+               : stunde < 11 ? 'Guten Morgen'
+               : stunde < 18 ? 'Guten Tag'
+               :               'Guten Abend';
+    return '<p class="gruss">' + text + '</p>';
+  },
 
-    // Ab dem Ziel in der Erfolgsfarbe, darunter neutral. Nie rot,
-    // nie warnend - der Zähler soll nicht mahnen.
-    const klasse = anzahl >= ZIEL_TAGE ? ' gut' : '';
+  /* Das Kennzahlen-Karussell. Gewischt wird mit scroll-snap, nicht mit
+     JavaScript: das Gerät bringt die Trägheit und das Einrasten selbst
+     mit, und zwar besser als jede Nachbildung. JS berührt hier nur die
+     Punkte darunter - siehe verdrahte(). */
+  karussell: function () {
+    const sichtbar = KARTEN.filter((k) => this.karteAn(k.id));
 
+    // Alle Karten abgeschaltet: dann steht dort nichts. Kein Platzhalter,
+    // kein Hinweis - es war eine bewusste Entscheidung des Nutzers.
+    if (!sichtbar.length) return '';
+
+    return '<div class="kk">' +
+        '<div class="kk-spur">' +
+          sichtbar.map((k) => {
+            const w = k.wert();
+            return '<div class="kk-karte">' +
+                '<div class="kk-label">' + esc(k.label) + '</div>' +
+                '<div class="kk-wert' + (w.klasse ? ' ' + w.klasse : '') +
+                  kkKlasse(w.text) + '">' + esc(w.text) + '</div>' +
+                (w.kontext ? '<div class="kk-kontext">' + esc(w.kontext) + '</div>' : '') +
+              '</div>';
+          }).join('') +
+        '</div>' +
+        (sichtbar.length > 1
+          ? '<div class="kk-punkte" aria-hidden="true">' +
+              sichtbar.map((k, i) => '<i' + (i === 0 ? ' class="an"' : '') + '></i>').join('') +
+            '</div>'
+          : '') +
+      '</div>';
+  },
+
+  karteAn: function (id) {
+    return (Daten.einstellungen.karten || {})[id] !== false;
+  },
+
+  /* Nach dem Zeichnen: die Punkte dem Wischen nachführen. Der Index kommt
+     nicht aus einer Kartenbreite - die Karte, deren Mitte der Mitte des
+     Ausschnitts am nächsten liegt, ist die aktuelle. Das stimmt auch bei
+     ungleich breiten Karten und bei jedem Rand. */
+  verdrahte: function (ziel) {
+    const spur = ziel.querySelector('.kk-spur');
+    const punkte = ziel.querySelectorAll('.kk-punkte i');
+    if (!spur || !punkte.length) return;
+
+    let laeuft = false;
+    spur.addEventListener('scroll', function () {
+      if (laeuft) return;
+      laeuft = true;
+
+      requestAnimationFrame(function () {
+        laeuft = false;
+        const mitte = spur.scrollLeft + spur.clientWidth / 2;
+
+        let beste = 0;
+        let kleinster = Infinity;
+        Array.prototype.forEach.call(spur.children, function (karte, i) {
+          const abstand = Math.abs(karte.offsetLeft + karte.offsetWidth / 2 - mitte);
+          if (abstand < kleinster) { kleinster = abstand; beste = i; }
+        });
+
+        punkte.forEach(function (p, i) { p.classList.toggle('an', i === beste); });
+      });
+    }, { passive: true });
+  },
+
+  /* Vom Erfassungs-Zähler bleibt an dieser Stelle nur die Handlung: der
+     einzige Weg, einen Nulltag einzutragen. Die Zahl steht jetzt im
+     Karussell, sie hier ein zweites Mal zu nennen wäre doppelt. */
+  nulltagZeile: function () {
+    if (Zaehler.heuteErfasst()) return '';
     return '<div class="zaehler">' +
-        '<span class="zaehler-text">' +
-          '<b class="zaehler-zahl' + klasse + '">' + anzahl + '</b> von ' +
-          FENSTER_TAGE + ' Tagen erfasst' +
-        '</span>' +
-        (Zaehler.heuteErfasst()
-          ? ''
-          : '<button class="zaehler-knopf" data-tu="nulltag">Heute nichts ausgegeben</button>') +
+        '<button class="zaehler-knopf" data-tu="nulltag">Heute nichts ausgegeben</button>' +
       '</div>';
   },
 
@@ -800,6 +1008,66 @@ const Sparen = {
       sichern(); Blatt.schliessen(); Sparen.zeichne(); UI.zeichne();
       UI.melde('Gespeichert', 'gut');
     }
+  }
+};
+
+/* ============================================================
+   Dashboard-Karten
+   ============================================================
+   Ein Schalter je Eintrag aus KARTEN. Die Liste selbst steht
+   nicht hier - sie kommt aus der Registry, damit ein neuer
+   Kartentyp an dieser Stelle nichts kostet.
+
+   Umgeschaltet wird sofort, ohne Speichern-Knopf: es gibt
+   nichts zu prüfen und nichts zurückzunehmen.
+   ============================================================ */
+
+const Dashboard = {
+
+  // Wie viele Karten sind an? Steht in der Zeile im Reiter "Mehr".
+  anzahlAn: function () {
+    return KARTEN.filter((k) => Start.karteAn(k.id)).length;
+  },
+
+  oeffnen: function () {
+    Blatt.oeffnen({
+      titel: 'Dashboard-Karten',
+      linksText: 'Fertig',
+      // Die Startseite liegt hinter dem Blatt. Sie wird erst beim
+      // Schliessen neu gezeichnet - waehrend des Schaltens wuerde das
+      // nur unter dem Blatt flackern.
+      beimSchliessen: () => UI.zeichne(),
+      nachOeffnen: (koerper) => {
+        const karten = Daten.einstellungen.karten;
+
+        koerper.innerHTML =
+          '<p class="hinweis" style="margin-top:0">Welche Kennzahlen oben auf der ' +
+            'Startseite zum Wischen bereitstehen.</p>' +
+
+          KARTEN.map((k) =>
+            '<div class="schalter-zeile">' +
+              '<div class="txt">' + esc(k.label) +
+                '<small>' + esc(k.beschreibung) + '</small></div>' +
+              '<div class="schalter' + (Start.karteAn(k.id) ? ' an' : '') +
+                '" data-karte="' + esc(k.id) + '" role="switch" tabindex="0" ' +
+                'aria-checked="' + Start.karteAn(k.id) + '" ' +
+                'aria-label="' + esc(k.label) + '"></div>' +
+            '</div>').join('') +
+
+          '<div style="height:20px"></div>';
+
+        koerper.querySelectorAll('[data-karte]').forEach((schalter) => {
+          schalter.addEventListener('click', function () {
+            const id = this.dataset.karte;
+            const an = !Start.karteAn(id);
+            karten[id] = an;
+            this.classList.toggle('an', an);
+            this.setAttribute('aria-checked', String(an));
+            sichern();
+          });
+        });
+      }
+    });
   }
 };
 
