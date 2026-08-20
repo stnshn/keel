@@ -294,7 +294,7 @@ const Fixkosten = {
       titel: 'Fixkosten',
       linksText: 'Fertig',
       rechtsText: 'Neu',
-      beiRechts: () => this.bearbeiten(null),
+      beiRechts: () => this.neu(),
       nachOeffnen: (koerper) => this.zeichne(koerper)
     });
   },
@@ -313,7 +313,7 @@ const Fixkosten = {
         'Miete, Strom, Handy, Versicherungen, Abos.</div>' +
         '<button class="knopf" id="fk-erste">Ersten Posten anlegen</button>' +
         '<div style="height:20px"></div>';
-      koerper.querySelector('#fk-erste').addEventListener('click', () => this.bearbeiten(null));
+      koerper.querySelector('#fk-erste').addEventListener('click', () => this.neu());
       return;
     }
 
@@ -370,12 +370,125 @@ const Fixkosten = {
       b.addEventListener('click', () => this.bearbeiten(b.dataset.fk)));
   },
 
-  bearbeiten: function (fkId) {
+  /* Die Weiche vor dem Formular.
+     Beim Erst-Setup liegen die letzten Monate schon als Buchungen in der App -
+     dann ist Abtippen die schlechtere Haelfte der Arbeit. Deshalb zwei Wege
+     statt einem. Das Blatt schliesst sich, bevor der gewaehlte Weg oeffnet:
+     so bleibt der Blaetterstapel so tief wie vorher, und "speichern" landet
+     hinterher wieder in der Fixkostenliste. */
+  neu: function () {
+    Blatt.oeffnen({
+      titel: 'Neue Fixkosten',
+      linksText: 'Abbrechen',
+      nachOeffnen: (koerper) => {
+        koerper.innerHTML =
+          '<div style="height:6px"></div>' +
+          '<button class="knopf" id="fk-weg-manuell">Manuell erfassen</button>' +
+          '<button class="knopf zweit" id="fk-weg-buchung">Aus Buchungen auswählen</button>' +
+          '<div style="height:20px"></div>';
+
+        koerper.querySelector('#fk-weg-manuell').addEventListener('click', () => {
+          Blatt.schliessen();
+          this.bearbeiten(null);
+        });
+        koerper.querySelector('#fk-weg-buchung').addEventListener('click', () => {
+          Blatt.schliessen();
+          this.ausBuchung();
+        });
+      }
+    });
+  },
+
+  /* Alle Ausgaben, neueste zuerst. Einnahmen bleiben draussen: eine Fixkosten-
+     position ist per Definition etwas, das abgeht.
+
+     Posten, die schon aus einer Buchung entstanden sind, bleiben antippbar -
+     die Markierung soll vor dem Versehen schuetzen, nicht vor der Absicht. */
+  ausBuchung: function () {
+    const belegt = new Set((Daten.fixkosten || [])
+      .map((f) => f.ausBuchungId).filter(Boolean));
+
+    const liste = Daten.buchungen.filter((b) => b.typ === 'ausgabe').slice()
+      .sort((a, b) => (a.datum < b.datum ? 1 : a.datum > b.datum ? -1
+        : (b.erstellt || 0) - (a.erstellt || 0)));
+
+    Blatt.oeffnen({
+      titel: 'Aus Buchungen',
+      linksText: 'Zurück',
+      nachOeffnen: (koerper) => {
+        if (!liste.length) {
+          koerper.innerHTML =
+            '<div class="leer-hinweis"><span class="gross">🧾</span>' +
+            'Noch keine Ausgaben erfasst. Importier zuerst deinen Kontoauszug ' +
+            'oder trag den Posten von Hand ein.</div>' +
+            '<button class="knopf" id="fk-doch-manuell">Manuell erfassen</button>' +
+            '<div style="height:20px"></div>';
+          koerper.querySelector('#fk-doch-manuell').addEventListener('click', () => {
+            Blatt.schliessen();
+            this.bearbeiten(null);
+          });
+          return;
+        }
+
+        const zeilen = liste.map((b) => {
+          const k = kategorie(b.kategorieId) || { name: 'Ohne Kategorie', emoji: '❓' };
+          const schon = belegt.has(b.id);
+          return '<button class="listenzeile' + (schon ? ' aus' : '') +
+            '" data-fkb="' + esc(b.id) + '">' +
+            '<span class="icon">' + esc(k.emoji) + '</span>' +
+            '<span class="mitte">' +
+              '<span class="haupt">' + esc(b.haendler || k.name) + '</span>' +
+              '<span class="neben">' + esc(datumText(b.datum) + ' · ' + k.name) + '</span>' +
+              (schon ? '<span class="neben">bereits als Fixkosten hinterlegt</span>' : '') +
+            '</span>' +
+            '<span class="rechts mono">' + geld(b.betragCent) + ' €</span>' +
+          '</button>';
+        }).join('');
+
+        koerper.innerHTML =
+          '<div class="liste">' + zeilen + '</div>' +
+          '<div style="height:12px"></div>';
+
+        koerper.querySelectorAll('[data-fkb]').forEach((el) =>
+          el.addEventListener('click', () => {
+            const b = Daten.buchungen.find((x) => x.id === el.dataset.fkb);
+            if (!b) return;
+            Blatt.schliessen();
+            this.bearbeiten(null, b);
+          }));
+      }
+    });
+  },
+
+  /* fkId  - vorhandenen Posten bearbeiten
+     quelle - Buchung, aus der ein neuer Posten entsteht (nur wenn fkId leer) */
+  bearbeiten: function (fkId, quelle) {
     const vorhanden = fkId ? (Daten.fixkosten || []).find((f) => f.id === fkId) : null;
     const z = vorhanden ? Object.assign({}, vorhanden) : {
       id: null, name: '', betragCent: 0, intervall: 'monat', faelligTag: 1,
-      startMonat: new Date().getMonth() + 1, kategorieId: null, erkennung: '', notiz: '', aktiv: true
+      startMonat: new Date().getMonth() + 1, kategorieId: null, erkennung: '', notiz: '',
+      aktiv: true, ausBuchungId: ''
     };
+
+    /* Kommt der Posten aus einer Buchung, ist alles schon da: Betrag, Tag,
+       Kategorie und der Name, an dem Keel die naechste Abbuchung wiedererkennt.
+       Nur der Name des Postens bleibt leer - "AZ D Immobilien" ist der
+       Buchungstext, "Miete" das, was man eigentlich meint. Deshalb steht der
+       Buchungstext als Platzhalter da und nicht als Inhalt.
+
+       Eine archivierte Kategorie wird bewusst nicht uebernommen: sie steht im
+       Gitter unten nicht zur Wahl, waere also gesetzt, aber unsichtbar. */
+    let namensPlatzhalter = 'z. B. Miete';
+    if (!vorhanden && quelle) {
+      z.betragCent   = quelle.betragCent;
+      z.faelligTag   = parseInt(quelle.datum.slice(8, 10), 10) || 1;
+      z.erkennung    = quelle.normHaendler || '';
+      z.ausBuchungId = quelle.id;
+      if (kategorienNach('ausgabe').some((k) => k.id === quelle.kategorieId)) {
+        z.kategorieId = quelle.kategorieId;
+      }
+      if (quelle.haendler) namensPlatzhalter = quelle.haendler;
+    }
 
     Blatt.oeffnen({
       titel: vorhanden ? 'Fixkosten bearbeiten' : 'Neue Fixkosten',
@@ -386,7 +499,8 @@ const Fixkosten = {
         koerper.innerHTML =
           '<div class="feld"><label>Bezeichnung</label>' +
             '<input type="text" id="fk-name" value="' + esc(z.name) + '" ' +
-            'placeholder="z. B. Miete" autocomplete="off" enterkeyhint="done"></div>' +
+            'placeholder="' + esc(namensPlatzhalter) + '" autocomplete="off" ' +
+            'enterkeyhint="done"></div>' +
 
           '<div class="feld-reihe">' +
             '<div class="feld"><label>Betrag in €</label>' +
@@ -471,7 +585,11 @@ const Fixkosten = {
 
     function speichern() {
       const koerper = Blatt.koerper();
-      const name = koerper.querySelector('#fk-name').value.trim();
+      // Bleibt das Namensfeld leer, gilt der Vorschlag, der als Platzhalter
+      // drinsteht - sonst waere der Buchungsweg an genau der Stelle blockiert,
+      // an der er nichts mehr wissen will.
+      const name = koerper.querySelector('#fk-name').value.trim() ||
+        (!vorhanden && quelle ? (quelle.haendler || '').trim() : '');
       const cent = CSVLeser.zuCent(koerper.querySelector('#fk-betrag').value);
 
       if (!name)                 { UI.melde('Bitte eine Bezeichnung eingeben', 'fehler'); return; }

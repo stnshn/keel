@@ -66,7 +66,7 @@ const Speicher = {
 
   leer: function () {
     return {
-      version: 6,
+      version: 7,
       erstellt: new Date().toISOString(),
       buchungen: [],
       // Tage, an denen bewusst nichts ausgegeben wurde (ISO-Datum, z. B.
@@ -195,7 +195,17 @@ const Speicher = {
       else if (p.staende.length) d.notgroschen.standCent = p.staende[p.staende.length - 1].centStand;
     }
 
-    d.version = 6;
+    // --- Erweiterung auf Version 7 (Fixkosten aus einer Buchung anlegen) ---
+    // Ein Posten kann jetzt aus einer vorhandenen Buchung entstehen. Die ID
+    // dieser Buchung bleibt am Posten stehen - nur dafuer da, dass die
+    // Auswahlliste zeigen kann, was schon hinterlegt ist. Aeltere Staende und
+    // Backups kennen das Feld nicht; dort gilt jeder Posten als von Hand
+    // erfasst.
+    d.fixkosten.forEach((f) => {
+      if (typeof f.ausBuchungId !== 'string') f.ausBuchungId = '';
+    });
+
+    d.version = 7;
 
     // Die System-Kategorie "Umbuchung" muss immer existieren.
     if (!d.kategorien.some((k) => k.id === 'umbuchung')) {
