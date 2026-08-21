@@ -1000,6 +1000,11 @@ const UI = {
         '<div class="liste">' +
           zeile('📥', 'Trade Republic importieren', '', 'import') +
           zeile('✏️', 'Buchung erfassen', '', 'neue-buchung') +
+          // Der Nulltag stand frueher auf der Startseite. Die zeigt jetzt nur
+          // noch Kennzahlen - die Handlung gehoert damit hierher, zu den
+          // anderen Wegen, einen Tag festzuhalten.
+          (Zaehler.heuteErfasst() ? '' :
+            zeile('🌙', 'Heute nichts ausgegeben', '', 'nulltag')) +
           zeile('🧾', 'Alle Ausgaben', '', 'liste-ausgaben') +
           zeile('💰', 'Alle Einnahmen', '', 'liste-einnahmen') +
         '</div>' +
@@ -2718,21 +2723,14 @@ function starten() {
       else if (was === 'liste-ausgaben')  { UI.zustand.listenArt = 'ausgabe';  UI.zeige('liste'); }
       else if (was === 'liste-einnahmen') { UI.zustand.listenArt = 'einnahme'; UI.zeige('liste'); }
       else if (was === 'zurueck-einaus')  UI.zeige('einaus');
-      else if (was === 'kat-mehr') { Start.katOffen = !Start.katOffen; UI.zeichne(); }
+      // Ein Reiter als Ziel - genutzt vom Symbol auf den Kennzahlen-Karten.
+      // Welcher Reiter, steht am Element selbst, nicht hier.
+      else if (was === 'reiter') UI.zeige(tu.dataset.schirm);
       else if (was === 'rechnung-mehr') { EinAus.detailOffen = !EinAus.detailOffen; UI.zeichne(); }
-      else if (was.indexOf('zeitraum') === 0) { /* siehe unten */ }
       else if (was === 'export') Backup.exportieren();
       else if (was === 'import-json') Backup.importieren();
       else if (was === 'backup-pruefen') Backup.pruefen();
-      else if (was === 'backup-band-weg') Backup.bandWeg();
       else if (was === 'alles-loeschen') Backup.allesLoeschen();
-      return;
-    }
-
-    const zeitraum = e.target.closest('[data-zeitraum]');
-    if (zeitraum) {
-      Start.zeitraum = parseInt(zeitraum.dataset.zeitraum, 10) || 1;
-      UI.zeichne();
       return;
     }
 

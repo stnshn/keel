@@ -242,11 +242,35 @@ const Zaehler = {
      label         die kleine Zeile über der Zahl
      beschreibung  steht nur in den Einstellungen unter dem Schalter
      wert()        { text, klasse, kontext } - erst beim Zeichnen gerufen
+     icon          Inhalt des Symbols oben rechts (siehe ICON)
+     ziel          wohin das Symbol führt: { tu, schirm, name }
 
    "klasse" ist '' (neutral), 'gut', 'warn' oder 'minus'.
    Gerechnet wird hier nichts: jeder Eintrag greift auf die
    Berechnung zu, die es in der App ohnehin schon gibt.
    ============================================================ */
+
+/* Die Symbole der Kärtchen. Eigene Konturen, keine Fremdquelle - dieselbe
+   Sprache wie die Reiter unten: 24er Raster, nur Linien, runde Enden.
+   Hier steht nur der Inhalt; den Rahmen setzt karussell(). */
+const ICON = {
+  // Geldbeutel: was noch drin ist
+  beutel: '<rect x="3" y="6" width="18" height="13" rx="2.5"/>' +
+          '<path d="M3 10.5h18"/><circle cx="16.5" cy="14.8" r="1.05"/>',
+
+  // Schild: ein Puffer schützt, er ist nichts zum Ausgeben
+  schild: '<path d="M12 3l7 3v5.5c0 4.2-2.9 7.4-7 8.5-4.1-1.1-7-4.3-7-8.5V6z"/>',
+
+  // Pinnnadel: greift das 📌 auf, das "Mehr" für Fixkosten führt
+  nadel:  '<path d="M9 3h6"/><path d="M10.5 3v6L7.5 13h9L13.5 9V3"/>' +
+          '<path d="M12 13v8"/>',
+
+  // Ziffernblock: dieselbe Handlung wie der runde Knopf in der Leiste
+  block:  '<rect x="4" y="3" width="16" height="18" rx="2.5"/>' +
+          '<circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/>' +
+          '<circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/>' +
+          '<path d="M9 18h6"/>'
+};
 
 /* Wie heroKlasse, nur für die kleinere Zahl im Kärtchen: ein langer
    Betrag bekommt dieselbe Stufe in schmal, statt umzubrechen.
@@ -265,6 +289,8 @@ const KARTEN = [
     id: 'rest',
     label: 'Diesen Monat noch übrig',
     beschreibung: 'Die große Zahl der Startseite',
+    icon: ICON.beutel,
+    ziel: { tu: 'reiter', schirm: 'einaus', name: 'Ein & Aus' },
     wert: function () {
       const r = Monatsrechnung.alles(monatVon(heuteISO()));
       const tage = Start.tageRest();
@@ -285,6 +311,8 @@ const KARTEN = [
     id: 'puffer',
     label: 'Monatspuffer',
     beschreibung: 'Durchschnittliches Einkommen minus Fixkosten',
+    icon: ICON.schild,
+    ziel: { tu: 'fixkosten', name: 'Fixkosten' },
     wert: function () {
       const ein = Monatsrechnung.durchschnittsEinkommen();
       const fix = typeof Fixkosten !== 'undefined' ? Fixkosten.monatsSumme() : 0;
@@ -306,6 +334,8 @@ const KARTEN = [
     id: 'fix',
     label: 'Fixkosten gesamt',
     beschreibung: 'Summe aller aktiven Posten pro Monat',
+    icon: ICON.nadel,
+    ziel: { tu: 'fixkosten', name: 'Fixkosten' },
     wert: function () {
       if (typeof Fixkosten === 'undefined') {
         return { text: geldE(0), klasse: '', kontext: '' };
@@ -326,6 +356,8 @@ const KARTEN = [
     id: 'quote',
     label: 'Erfassungsquote',
     beschreibung: 'Erfasste Tage der letzten 30',
+    icon: ICON.block,
+    ziel: { tu: 'neue-buchung', name: 'Buchung erfassen' },
     wert: function () {
       const anzahl = Zaehler.anzahl();
       return {
@@ -344,12 +376,7 @@ const KARTEN = [
    Startseite
    ============================================================ */
 
-const KAT_KURZ = 4;   // so viele Kategorien stehen offen, der Rest klappt auf
-
 const Start = {
-
-  zeitraum: 1,        // Monate für die Kategorie-Auswertung
-  katOffen: false,    // ist die Kategorieliste aufgeklappt?
 
   tageRest: function () {
     const d = new Date();
@@ -357,17 +384,14 @@ const Start = {
     return letzter - d.getDate();
   },
 
-  /* Oben eine leise Ansprache, darunter die Kennzahlen zum Wischen.
-     Alles Weitere ordnet sich darunter ein - und was nur beim genauen
-     Hinsehen zählt, liegt eine Tippbewegung tiefer. */
+  /* Oben eine leise Ansprache, darunter die Kennzahlen zum Wischen - mehr
+     steht hier nicht. Der Schirm zeigt einen Stand, er verhandelt ihn
+     nicht: alles Weitere liegt in seinem eigenen Reiter, und das Symbol
+     auf jeder Karte führt genau dorthin. */
   html: function () {
     return '<div class="inhalt start-inhalt">' +
         this.begruessung() +
         this.karussell() +
-        this.nulltagZeile() +
-        this.band() +
-        this.ruecklagenKarte() +
-        this.kategorienKarte() +
       '</div>';
   },
 
@@ -398,6 +422,7 @@ const Start = {
           sichtbar.map((k) => {
             const w = k.wert();
             return '<div class="kk-karte">' +
+                this.zielKnopf(k) +
                 '<div class="kk-label">' + esc(k.label) + '</div>' +
                 '<div class="kk-wert' + (w.klasse ? ' ' + w.klasse : '') +
                   kkKlasse(w.text) + '">' + esc(w.text) + '</div>' +
@@ -411,6 +436,20 @@ const Start = {
             '</div>'
           : '') +
       '</div>';
+  },
+
+  /* Das Symbol oben rechts in der Karte - und zwar das einzige Tippziel
+     darauf. Die Karte selbst bleibt stumm: eine ganze Karte, die auf jede
+     Berührung reagiert, würde mit dem Wischen streiten und beim Loslassen
+     einen Reiter öffnen, den niemand wollte. */
+  zielKnopf: function (k) {
+    if (!k.ziel || !k.icon) return '';
+
+    return '<button class="kk-ziel" data-tu="' + esc(k.ziel.tu) + '"' +
+        (k.ziel.schirm ? ' data-schirm="' + esc(k.ziel.schirm) + '"' : '') +
+        ' aria-label="Zu ' + esc(k.ziel.name) + '">' +
+        '<svg viewBox="0 0 24 24" aria-hidden="true">' + k.icon + '</svg>' +
+      '</button>';
   },
 
   karteAn: function (id) {
@@ -445,182 +484,6 @@ const Start = {
         punkte.forEach(function (p, i) { p.classList.toggle('an', i === beste); });
       });
     }, { passive: true });
-  },
-
-  /* Vom Erfassungs-Zähler bleibt an dieser Stelle nur die Handlung: der
-     einzige Weg, einen Nulltag einzutragen. Die Zahl steht jetzt im
-     Karussell, sie hier ein zweites Mal zu nennen wäre doppelt. */
-  nulltagZeile: function () {
-    if (Zaehler.heuteErfasst()) return '';
-    return '<div class="zaehler">' +
-        '<button class="zaehler-knopf" data-tu="nulltag">Heute nichts ausgegeben</button>' +
-      '</div>';
-  },
-
-  /* Höchstens EIN Band, nach Dringlichkeit. Vorher konnten drei
-     gleichzeitig zwischen der großen Zahl und den Karten stehen. */
-  band: function () {
-    if (this.nichtsEingerichtet()) {
-      return this.bandHtml('⚙️', 'Mindestnetto und Fixkosten eintragen', 'einstellungen', null);
-    }
-    if (typeof Backup !== 'undefined' && Backup.bandZeigen()) {
-      return this.bandHtml('💾', 'Zeit für ein Backup', 'export', 'backup-band-weg');
-    }
-    return this.zweiterTagHinweis();
-  },
-
-  bandHtml: function (symbol, text, tu, tuZu) {
-    return '<div class="band-hinweis">' +
-        '<button class="bh-haupt" data-tu="' + tu + '">' +
-          '<span class="bh-symbol">' + symbol + '</span>' +
-          '<span class="bh-text">' + esc(text) + '</span>' +
-          '<span class="chevron">›</span>' +
-        '</button>' +
-        (tuZu
-          ? '<button class="bh-zu" data-tu="' + tuZu + '" aria-label="Für heute ausblenden">✕</button>'
-          : '') +
-      '</div>';
-  },
-
-  /* Ein einziger leiser Hinweis, höchstens einmal am Tag. Er führt jetzt
-     direkt in die Erfassung, statt nur davon zu sprechen. */
-  zweiterTagHinweis: function () {
-    if (Zaehler.heuteErfasst() || Zaehler.gesternErfasst()) return '';
-
-    const heute = heuteISO();
-    if (Daten.einstellungen.hinweisTag === heute) return '';
-    Daten.einstellungen.hinweisTag = heute;
-    sichern();
-
-    return this.bandHtml('✏️', 'Zwei Tage nichts erfasst', 'neue-buchung', null);
-  },
-
-  nichtsEingerichtet: function () {
-    return !(Daten.einstellungen.mindestnettoCent > 0) &&
-           !(Daten.fixkosten || []).length;
-  },
-
-  /* Notgroschen und Sparziel standen als zwei gleich aussehende Karten
-     untereinander - mit doppeltem Balken, doppeltem Ziel und doppelter
-     Prozentzahl. Jetzt eine Karte, zwei Zeilen. Die Prozentzahl ist weg:
-     der Balken zeigt sie bereits. */
-  ruecklagenKarte: function () {
-    const n = Daten.notgroschen || { standCent: 0, zielCent: 0 };
-    const stand = Notgroschen.stand();        // gekoppelt: Stand des Postens
-    const hatNot = !!(stand || n.zielCent);
-
-    const ziele = Daten.sparziele || [];
-    const z = ziele.find((x) => x.aufStartseite) || ziele[0] || null;
-
-    if (!hatNot && !z) {
-      return '<button class="karte karte-knopf leer-karte" data-tu="sparen">' +
-        '<span class="leer-symbol">🛟</span>' +
-        '<span class="leer-text">Notgroschen und Sparziele</span>' +
-        '<span class="chevron">›</span></button>';
-    }
-
-    return '<button class="karte karte-knopf" data-tu="sparen">' +
-      '<p class="karte-titel">Rücklagen<span class="karte-pfeil">›</span></p>' +
-      (hatNot ? this.ruecklageZeile('🛟', 'Notgroschen', stand, n.zielCent)
-              : this.ruecklageLeer('🛟', 'Notgroschen')) +
-      (z ? this.ruecklageZeile('🎯', z.name, z.standCent, z.zielCent)
-         : this.ruecklageLeer('🎯', 'Sparziel')) +
-      (ziele.length > 1
-        ? '<div class="rl-weitere">und ' + (ziele.length - 1) + ' weitere' +
-          (ziele.length === 2 ? 's Ziel' : ' Ziele') + '</div>'
-        : '') +
-    '</button>';
-  },
-
-  ruecklageZeile: function (symbol, name, standCent, zielCent) {
-    const anteil = zielCent > 0 ? Math.min(1, standCent / zielCent) : 0;
-    return '<div class="rl-zeile">' +
-        '<div class="rl-kopf">' +
-          '<span class="rl-name">' + esc(symbol) + ' ' + esc(name) + '</span>' +
-          '<span class="rl-wert">' + geld(standCent) +
-            (zielCent > 0 ? '<small> von ' + geld(zielCent) + ' €</small>' : ' €') +
-          '</span>' +
-        '</div>' +
-        (zielCent > 0
-          ? '<div class="spar-balken"><i style="width:' + (anteil * 100).toFixed(1) + '%"></i></div>'
-          : '') +
-      '</div>';
-  },
-
-  ruecklageLeer: function (symbol, name) {
-    return '<div class="rl-zeile rl-leer">' +
-        '<span class="rl-name">' + esc(symbol) + ' ' + esc(name) + '</span>' +
-        '<span class="rl-wert">noch nicht angelegt</span>' +
-      '</div>';
-  },
-
-  /* Kurz gehalten: die vier größten Kategorien stehen offen, der Rest
-     klappt auf. Der Zeitraum-Umschalter liegt mit im aufgeklappten Teil -
-     wer ihn braucht, sieht ohnehin gerade genauer hin. */
-  kategorienKarte: function () {
-    const monate = this.zeitraum;
-    const bis = monatVon(heuteISO());
-    const von = monatVerschieben(bis, -(monate - 1));
-
-    const proKat = {};
-    Daten.buchungen.forEach((b) => {
-      if (b.typ !== 'ausgabe' || !zaehltMit(b)) return;
-      const m = wirkMonat(b);
-      if (m < von || m > bis) return;
-      proKat[b.kategorieId] = (proKat[b.kategorieId] || 0) + b.betragCent;
-    });
-
-    const liste = Object.keys(proKat)
-      .map((id) => ({ id: id, cent: proKat[id] }))
-      .sort((a, b) => b.cent - a.cent);
-
-    // Der Zeitraum steht nur dann im Titel, wenn er vom Normalfall abweicht.
-    const titel = 'Ausgaben' + (monate > 1 ? ' · ' + monate + ' Monate' : '');
-
-    const schalter =
-      '<div class="zeitschalter" role="group" aria-label="Zeitraum">' +
-        [1, 3, 6, 12].map((m) =>
-          '<button data-zeitraum="' + m + '" aria-pressed="' + (m === monate) + '">' +
-          m + ' M</button>').join('') +
-      '</div>';
-
-    if (!liste.length) {
-      // Der Zeitraum-Umschalter erscheint nur, wenn es ueberhaupt irgendwann
-      // Ausgaben gab - sonst schiebt man einen leeren Zeitraum hin und her.
-      const jeAusgaben = Daten.buchungen.some((b) => b.typ === 'ausgabe');
-      return '<div class="karte">' +
-        '<p class="karte-titel">' + esc(titel) + '</p>' +
-        (jeAusgaben ? schalter : '') +
-        '<div class="leer-hinweis" style="padding:18px 8px">Nichts ausgegeben.</div>' +
-      '</div>';
-    }
-
-    const groesste = liste[0].cent;
-    const gesamt = liste.reduce((s, e) => s + e.cent, 0);
-    const sichtbar = this.katOffen ? liste : liste.slice(0, KAT_KURZ);
-
-    return '<div class="karte">' +
-      '<p class="karte-titel">' + esc(titel) +
-        '<span class="karte-summe">' + geldE(gesamt) + '</span></p>' +
-      (this.katOffen ? schalter : '') +
-      sichtbar.map((e) => {
-        const k = kategorie(e.id) || { name: 'Unbekannt', emoji: '❓' };
-        const breite = Math.max(3, Math.round(e.cent / groesste * 100));
-        return '<div class="kat-zeile">' +
-          '<div class="kat-kopf">' +
-            '<span class="emoji">' + esc(k.emoji) + '</span>' +
-            '<span class="name">' + esc(k.name) + '</span>' +
-            '<span class="betrag">' + geld(e.cent) + '</span>' +
-          '</div>' +
-          '<div class="balken"><i style="width:' + breite + '%;background:' + katFarbe() + '"></i></div>' +
-        '</div>';
-      }).join('') +
-      (liste.length > KAT_KURZ || this.katOffen
-        ? '<button class="mehr-zeile" data-tu="kat-mehr">' +
-            (this.katOffen ? 'weniger' : 'alle ' + liste.length + ' anzeigen') +
-          '</button>'
-        : '') +
-    '</div>';
   }
 };
 

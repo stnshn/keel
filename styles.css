@@ -863,9 +863,22 @@ select {
   --dg-blau-tief: #0072DC;
 }
 
-/* Die Startseite hat keine Kopfzeile mehr. Die grosse Zahl ist das
-   Erste auf dem Schirm - der Rand oben kommt von #app (Safe Area). */
-.start-inhalt { padding-top: 8px; }
+/* Die Startseite traegt nur zwei Dinge: die Begruessung und das
+   Karussell. Damit die Karten nicht oben kleben, spannt sich der Inhalt
+   ueber die volle sichtbare Hoehe - abzueglich dessen, was #app oben und
+   unten schon freihaelt (Safe Area, Leiste, Plus-Knopf). Das Karussell
+   nimmt den Rest und setzt sich mittig hinein.
+
+   100dvh statt 100vh: auf dem iPhone waechst und schrumpft die
+   Adressleiste, dvh rechnet mit dem, was gerade wirklich sichtbar ist.
+   Die vh-Zeile davor ist der Rueckfall fuer aeltere Systeme. */
+.start-inhalt {
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh  - var(--sicher-oben) - var(--nav-hoehe) - var(--sicher-unten) - 60px);
+  min-height: calc(100dvh - var(--sicher-oben) - var(--nav-hoehe) - var(--sicher-unten) - 60px);
+}
 
 /* Die eine Zahl. Sie steht frei, nicht in einer Karte: eine Flaeche
    um sie herum wuerde sie zu einem Element unter anderen machen.
@@ -904,8 +917,18 @@ select {
 
    Die Spur laeuft bis in die Raender hinein - negative Aussenraender
    gegen das Innenmass von ".inhalt". So schaut die naechste Karte am
-   Rand hervor und zeigt, dass es weitergeht. */
-.kk { margin: 0 -16px 18px; }
+   Rand hervor und zeigt, dass es weitergeht.
+
+   Auf der Startseite nimmt das Karussell die ganze uebrige Hoehe und
+   legt sich mittig hinein: es ist dort das einzige Element, also
+   gehoert es in die Mitte und nicht an den oberen Rand. */
+.kk {
+  margin: 0 -16px 18px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 
 .kk-spur {
   position: relative;            /* Bezugspunkt fuer offsetLeft der Kaertchen */
@@ -926,17 +949,52 @@ select {
 }
 .kk-spur::-webkit-scrollbar { display: none; }
 
+/* Eine Karte nimmt fast die ganze Breite und ein gutes Stueck Hoehe: sie
+   ist das Einzige, was der Schirm zeigt, also darf sie auch so gross
+   sein. Der schmale Streifen der naechsten Karte am rechten Rand bleibt -
+   ohne ihn saehe das Karussell aus wie eine einzelne Karte.
+
+   Die Hoehe kommt aus der sichtbaren Hoehe (dvh), damit die Karte auf
+   einem grossen iPhone mitwaechst - gedeckelt, damit sie auf einem
+   kleinen nicht ueber den Schirm hinauslaeuft. */
 .kk-karte {
-  flex: 0 0 78%;
-  max-width: 300px;
+  flex: 0 0 86%;
+  max-width: 420px;
   scroll-snap-align: start;
+  position: relative;              /* Bezugspunkt fuer das Symbol oben rechts */
   background: var(--karte);
   border-radius: var(--r-m);
-  padding: 16px;
-  min-height: 116px;
+  padding: 24px 22px;
+  min-height: 200px;
+  height: min(46dvh, 320px);
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+/* Das Symbol oben rechts - das einzige Tippziel auf der Karte. 44px sind
+   Apples Mindestmass fuer eine Flaeche, die mit dem Daumen sicher zu
+   treffen ist; das Symbol selbst darin bleibt klein und leise. */
+.kk-ziel {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  color: var(--text-sehrleise);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.kk-ziel svg {
+  width: 22px; height: 22px;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.kk-ziel:active {
+  background: var(--karte-hell);
+  color: var(--akzent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .kk-ziel { transition: none; }
 }
 
 .kk-label {
@@ -945,14 +1003,15 @@ select {
   letter-spacing: 0.9px;
   text-transform: uppercase;
   color: var(--text-sehrleise);
+  padding-right: 40px;    /* das Symbol oben rechts freihalten */
 }
 
 /* Die tragende Zahl des Kaertchens - dieselbe Stufe wie die grosse Zahl
    eines Schirms, nur auf Kartengroesse heruntergerechnet. Keine neue
    Schriftgroesse im System. */
 .kk-wert {
-  margin-top: 8px;
-  font-size: calc(var(--t-primaer) * 0.55);
+  margin-top: 12px;
+  font-size: calc(var(--t-primaer) * 0.68);
   font-weight: 700;
   letter-spacing: -1.2px;
   line-height: 1.1;
@@ -962,13 +1021,15 @@ select {
 .kk-wert.warn  { color: var(--warn); }
 .kk-wert.minus { color: var(--minus); }
 
-/* Lange Betraege duerfen nicht ueber den Kartenrand laufen. */
-.kk-wert.mittel { font-size: calc(var(--t-primaer) * 0.45); letter-spacing: -0.8px; }
-.kk-wert.klein  { font-size: calc(var(--t-primaer) * 0.37); letter-spacing: -0.4px; }
+/* Lange Betraege duerfen nicht ueber den Kartenrand laufen. Die Karte ist
+   breiter geworden, die Zahl aber staerker gewachsen als die Breite -
+   die Stufen bleiben deshalb im selben Verhaeltnis zueinander. */
+.kk-wert.mittel { font-size: calc(var(--t-primaer) * 0.55); letter-spacing: -0.8px; }
+.kk-wert.klein  { font-size: calc(var(--t-primaer) * 0.44); letter-spacing: -0.4px; }
 
 .kk-kontext {
-  margin-top: 6px;
-  font-size: var(--t-meta);
+  margin-top: 10px;
+  font-size: var(--t-sekundaer);
   color: var(--text-leise);
 }
 
