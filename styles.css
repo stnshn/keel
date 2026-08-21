@@ -45,10 +45,14 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+/* Das Dokument selbst scrollt nicht - gescrollt wird in #app (siehe dort).
+   Sonst haengt die Lage der unteren Leiste davon ab, ob ein Reiter lang
+   genug zum Scrollen ist. */
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -99,8 +103,18 @@ select {
 
 /* ---------- Grundgeruest ---------- */
 
+/* Die feste Huelle der App: #app steht auf dem ganzen Schirm und scrollt
+   in sich selbst. Frueher scrollte das Dokument - dann stand die untere
+   Leiste auf kurzen Reitern (Base, Vermoegen) an anderer Stelle als auf
+   langen (Ein & Aus, Mehr), weil iOS "position: fixed" auf einer nicht
+   scrollbaren Seite anders behandelt. So gibt es diesen Unterschied
+   nicht mehr: die Seite ist immer gleich hoch wie der Schirm. */
 #app {
-  min-height: 100%;
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding-top: var(--sicher-oben);
   /* Der erhoehte Plus-Knopf ragt ueber die Leiste hinaus - deshalb unten
      etwas mehr Luft, damit er nichts verdeckt. */

@@ -695,7 +695,11 @@ const UI = {
     this.zustand.schirm = schirm;
     this.zustand.suche = '';
     this.zeichne();
-    window.scrollTo(0, 0);
+
+    // Gescrollt wird in #app, nicht im Dokument - ein neuer Reiter
+    // beginnt deshalb dort oben, nicht mit window.scrollTo.
+    const app = document.getElementById('app');
+    if (app) app.scrollTop = 0;
   },
 
   zeichne: function () {

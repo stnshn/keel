@@ -5,7 +5,7 @@
  * Sonst zeigt das iPhone weiter die alte, zwischengespeicherte Version an.
  */
 
-const CACHE_VERSION = 'keel-v19';
+const CACHE_VERSION = 'keel-v20';
 
 const DATEIEN = [
   './',
