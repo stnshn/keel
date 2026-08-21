@@ -340,7 +340,19 @@ select {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 51;
-  max-height: 93vh;
+
+  /* Ein hohes Blatt darf nicht unter die Statusleiste wachsen. Frueher
+     stand hier 93vh - eine Prozentzahl, die nichts von der Uhr oben weiss:
+     auf neueren iPhones ist die Statusleiste hoeher als die 7 %, die
+     uebrig blieben, und "Fertig" lag dann unter der Uhrzeit. Jetzt
+     richtet sich die Grenze nach dem echten Mass des Geraets, plus 10px
+     Luft. Ohne Notch ist --sicher-oben 0 - dort entsteht kein zusaetzlicher
+     Abstand.
+
+     Die vh-Zeile davor ist der Rueckfall fuer aeltere Systeme ohne dvh. */
+  max-height: calc(100vh  - var(--sicher-oben) - 10px);
+  max-height: calc(100dvh - var(--sicher-oben) - 10px);
+
   display: flex; flex-direction: column;
   background: var(--bg-erhoben);
   border-radius: var(--r-l) var(--r-l) 0 0;
